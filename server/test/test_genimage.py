@@ -5,7 +5,7 @@ import requests
 DASHSCOPE_API_KEY = "sk-f6ea7e4bdd35459ba0b93dcd659b8744"
 # 裸域名标准多模态文生图接口（官方推荐，不会报url error）
 API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-# 你的文生图完整模型标识
+# 你的文生图完整模型标111git识
 MODEL_NAME = "qwen-image-2.0-pro-2026-04-22"
 
 def alibaba_text_to_image(prompt: str, width: int = 1024, height: int = 1024):
