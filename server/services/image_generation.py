@@ -8,7 +8,7 @@ import urllib.parse
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-import requests  # 统一在顶部导入，避免函数内重复 import
+import requests  # 统一在顶部导入，避免函数内重123复 impor123t
 
 from core.config import BASE_DIR
 
