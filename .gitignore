@@ -15,7 +15,7 @@ client/dist/
 admin/dist/
 *.egg-info/
 
-# Environment & secrets
+# Environment & secrets1
 .env
 .env.*
 **/.env
