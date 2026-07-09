@@ -1,0 +1,61 @@
+# Dependencies
+client/
+admin/
+admin-legacy/
+client/node_modules/
+admin/node_modules/
+server/venv/
+venv/
+trand_venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+client/dist/
+admin/dist/
+*.egg-info/
+
+# Environment & secrets
+.env
+.env.*
+**/.env
+**/.env.*
+*.env.local
+*.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+*.log.old
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE / AI工具缓存
+.vscode/
+.idea/
+.claude
+*.swp
+*.swo
+
+# Data directories (runtime generated)
+memory/
+data/
+data/memory/
+server/memory/
+server/data/images/
+data/images/
+server/scripts/data/images/
+
+# Binary cache files
+*.bin
+
+# Backup files
+*.bak
+canvases/
+tool/

@@ -1,0 +1,359 @@
+from datetime import datetime, timezone
+from typing import List, Optional
+
+from sqlalchemy import desc, func, or_
+from sqlalchemy.exc import IntegrityError
+
+from core.database import PostORM, PostCommentORM, PostLikeORM, get_db, serialize_datetime
+
+
+def create_post(
+    title: str,
+    content: str,
+    user_id: Optional[int] = None,
+    user_name: str = "匿名用户",
+    avatar: str = "",
+    images: Optional[List[str]] = None,
+    category: str = "",
+) -> dict:
+    """创建新帖子"""
+    title = title.strip()
+    content = content.strip()
+    category = category.strip()
+    if not title:
+        return {"ok": False, "error": "标题不能为空"}
+    if not content:
+        return {"ok": False, "error": "内容不能为空"}
+    if len(title) > 200:
+        title = title[:200]
+    if len(content) > 5000:
+        content = content[:5000]
+    if len(category) > 50:
+        category = category[:50]
+
+    with get_db() as db:
+        post = PostORM(
+            user_id=user_id,
+            user_name=user_name.strip() or "匿名用户",
+            avatar=avatar or "",
+            title=title,
+            content=content,
+            images=images or [],
+            category=category,
+        )
+        db.add(post)
+        db.flush()
+        return {
+            "ok": True,
+            "id": post.id,
+            "user_id": post.user_id,
+            "user_name": post.user_name,
+            "avatar": post.avatar,
+            "title": post.title,
+            "content": post.content,
+            "images": post.images,
+            "category": post.category or "",
+            "likes_count": post.likes_count,
+            "comments_count": post.comments_count,
+            "created_at": serialize_datetime(post.created_at),
+        }
+
+
+def _batch_liked_ids(db, post_ids: List[int], user_id: Optional[int], device_id: Optional[str]) -> set:
+    """批量查询用户已点赞的帖子 ID"""
+    if not post_ids:
+        return set()
+    if user_id:
+        rows = db.query(PostLikeORM.post_id).filter(
+            PostLikeORM.post_id.in_(post_ids),
+            PostLikeORM.user_id == user_id,
+        ).all()
+    elif device_id:
+        rows = db.query(PostLikeORM.post_id).filter(
+            PostLikeORM.post_id.in_(post_ids),
+            PostLikeORM.device_id == device_id,
+        ).all()
+    else:
+        return set()
+    return {r[0] for r in rows}
+
+
+def get_posts_feed(
+    limit: int = 20,
+    offset: int = 0,
+    device_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    category: Optional[str] = None,
+) -> List[dict]:
+    """获取帖子列表"""
+    with get_db() as db:
+        query = db.query(PostORM)
+        if category:
+            query = query.filter(PostORM.category == category)
+        posts = (
+            query.order_by(desc(PostORM.created_at))
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+        post_ids = [p.id for p in posts]
+        liked_ids = _batch_liked_ids(db, post_ids, user_id, device_id)
+        return [
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "user_name": p.user_name,
+                "avatar": p.avatar,
+                "title": p.title,
+                "content": p.content,
+                "images": p.images or [],
+                "category": p.category or "",
+                "likes_count": p.likes_count,
+                "comments_count": p.comments_count,
+                "liked": p.id in liked_ids,
+                "created_at": serialize_datetime(p.created_at),
+            }
+            for p in posts
+        ]
+
+
+def search_posts(
+    query: str,
+    limit: int = 20,
+    offset: int = 0,
+    device_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> List[dict]:
+    """搜索帖子（标题或内容匹配）"""
+    with get_db() as db:
+        search_pattern = f"%{query}%"
+        posts = (
+            db.query(PostORM)
+            .filter(
+                or_(
+                    PostORM.title.ilike(search_pattern),
+                    PostORM.content.ilike(search_pattern),
+                )
+            )
+            .order_by(desc(PostORM.created_at))
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+        result = []
+        for p in posts:
+            liked = False
+            if user_id:
+                liked = (
+                    db.query(PostLikeORM)
+                    .filter_by(post_id=p.id, user_id=user_id)
+                    .first()
+                    is not None
+                )
+            elif device_id:
+                liked = (
+                    db.query(PostLikeORM)
+                    .filter_by(post_id=p.id, device_id=device_id)
+                    .first()
+                    is not None
+                )
+            result.append({
+                "id": p.id,
+                "user_id": p.user_id,
+                "user_name": p.user_name,
+                "avatar": p.avatar,
+                "title": p.title,
+                "content": p.content,
+                "images": p.images or [],
+                "category": p.category or "",
+                "likes_count": p.likes_count,
+                "comments_count": p.comments_count,
+                "liked": liked,
+                "created_at": serialize_datetime(p.created_at),
+            })
+        return result
+
+
+def get_my_posts(
+    user_id: int,
+    limit: int = 50,
+    offset: int = 0,
+) -> List[dict]:
+    """获取指定用户发布的帖子列表"""
+    with get_db() as db:
+        posts = (
+            db.query(PostORM)
+            .filter_by(user_id=user_id)
+            .order_by(desc(PostORM.created_at))
+            .limit(limit)
+            .offset(offset)
+            .all()
+        )
+        return [
+            {
+                "id": p.id,
+                "user_id": p.user_id,
+                "user_name": p.user_name,
+                "avatar": p.avatar,
+                "title": p.title,
+                "content": p.content,
+                "images": p.images or [],
+                "category": p.category or "",
+                "likes_count": p.likes_count,
+                "comments_count": p.comments_count,
+                "liked": True,
+                "created_at": serialize_datetime(p.created_at),
+            }
+            for p in posts
+        ]
+
+
+def get_post_detail(post_id: int) -> Optional[dict]:
+    """获取帖子详情"""
+    with get_db() as db:
+        post = db.query(PostORM).filter_by(id=post_id).first()
+        if not post:
+            return None
+        return {
+            "id": post.id,
+            "user_id": post.user_id,
+            "user_name": post.user_name,
+            "avatar": post.avatar,
+            "title": post.title,
+            "content": post.content,
+            "images": post.images or [],
+            "category": post.category or "",
+            "likes_count": post.likes_count,
+            "comments_count": post.comments_count,
+            "created_at": serialize_datetime(post.created_at),
+        }
+
+
+def toggle_post_like(
+    post_id: int,
+    device_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+) -> dict:
+    """点赞或取消点赞帖子"""
+    with get_db() as db:
+        post = db.query(PostORM).filter_by(id=post_id).first()
+        if not post:
+            return {"ok": False, "error": "帖子不存在"}
+
+        query = db.query(PostLikeORM).filter_by(post_id=post_id)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+        elif device_id:
+            query = query.filter_by(device_id=device_id)
+        else:
+            return {"ok": False, "error": "无法识别用户"}
+
+        existing = query.first()
+        if existing:
+            db.delete(existing)
+            db.query(PostORM).filter_by(id=post_id).update(
+                {PostORM.likes_count: func.max(PostORM.likes_count - 1, 0)},
+                synchronize_session=False,
+            )
+            db.flush()
+            likes_count = (
+                db.query(PostORM.likes_count).filter_by(id=post_id).scalar() or 0
+            )
+            liked = False
+        else:
+            try:
+                db.add(
+                    PostLikeORM(
+                        post_id=post_id,
+                        device_id=device_id,
+                        user_id=user_id,
+                    )
+                )
+                db.flush()
+                db.query(PostORM).filter_by(id=post_id).update(
+                    {PostORM.likes_count: PostORM.likes_count + 1},
+                    synchronize_session=False,
+                )
+                db.flush()
+                liked = True
+            except IntegrityError:
+                # 并发重复点赞，视为已点赞
+                db.rollback()
+                liked = True
+            likes_count = (
+                db.query(PostORM.likes_count).filter_by(id=post_id).scalar() or 0
+            )
+
+        return {"ok": True, "liked": liked, "likes_count": likes_count}
+
+
+def add_post_comment(
+    post_id: int,
+    content: str,
+    device_id: Optional[str] = None,
+    user_id: Optional[int] = None,
+    user_name: str = "匿名用户",
+) -> dict:
+    """添加评论"""
+    content = content.strip()
+    if not content:
+        return {"ok": False, "error": "评论内容不能为空"}
+    if len(content) > 500:
+        content = content[:500]
+
+    with get_db() as db:
+        post = db.query(PostORM).filter_by(id=post_id).first()
+        if not post:
+            return {"ok": False, "error": "帖子不存在"}
+
+        comment = PostCommentORM(
+            post_id=post_id,
+            user_id=user_id,
+            user_name=user_name.strip() or "匿名用户",
+            device_id=device_id,
+            content=content,
+        )
+        db.add(comment)
+        post.comments_count = (post.comments_count or 0) + 1
+        db.flush()
+        return {
+            "ok": True,
+            "id": comment.id,
+            "user_name": comment.user_name,
+            "content": comment.content,
+            "created_at": serialize_datetime(comment.created_at),
+        }
+
+
+def get_post_comments(post_id: int, limit: int = 50) -> List[dict]:
+    """获取帖子的所有评论"""
+    with get_db() as db:
+        comments = (
+            db.query(PostCommentORM)
+            .filter_by(post_id=post_id)
+            .order_by(PostCommentORM.created_at)
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "id": c.id,
+                "user_id": c.user_id,
+                "user_name": c.user_name,
+                "content": c.content,
+                "created_at": serialize_datetime(c.created_at),
+            }
+            for c in comments
+        ]
+
+
+def delete_post(post_id: int) -> bool:
+    """删除帖子及其评论和点赞"""
+    with get_db() as db:
+        post = db.query(PostORM).filter_by(id=post_id).first()
+        if not post:
+            return False
+        db.query(PostLikeORM).filter_by(post_id=post_id).delete(synchronize_session=False)
+        db.query(PostCommentORM).filter_by(post_id=post_id).delete(synchronize_session=False)
+        db.delete(post)
+        return True
