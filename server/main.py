@@ -1,3 +1,8 @@
+from dotenv import load_dotenv
+import os
+# 加载.env配置
+load_dotenv()
+
 import asyncio
 import logging
 import os
@@ -161,6 +166,22 @@ async def lifespan(app: FastAPI):
                     "system_prompt_id": "",
                 },
                 "sort_order": 2,
+            },
+            {
+                "key": "image_alibaba",
+                "name": "阿里云百炼绘图配置",
+                "description": "文生图阿里云服务商参数",
+                "config_type": "image_generation",
+                "enabled": 1,
+                "sort_order": 3,
+                "config_json": {
+                    "provider": "alibaba",
+                    "api_key": "sk-f6ea7e4bdd35459ba0b93dcd659b8744",
+                    "model": "qwen-image-2.0-pro-2026-04-22",
+                    "base_url": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+                    "timeout": 120,
+                    "negative_prompt": "模糊、畸形、水印、文字、低画质"
+                }
             },
         ]
         for g in default_groups:

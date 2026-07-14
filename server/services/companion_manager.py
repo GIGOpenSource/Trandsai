@@ -18,7 +18,7 @@ from core.database import (
     MomentLikeORM,
     RelationSummaryORM,
     ShortTermMessageORM,
-    get_db,
+    get_db, UserORM,
 )
 from services.image_generation import generate_avatar_prompt, generate_image
 from services.memory import CompanionMemory
@@ -398,8 +398,31 @@ class CompanionManager:
         return self._companions.get(companion_id)
 
     def list_all(self, user_id: Optional[int] = None) -> List[Dict]:
+        """获取 companions 列表。
+        必须提供 user_id，只返回该用户拥有的 companions（created_by 匹配）。
+        """
+        if user_id is None:
+            return []
+
         result = []
+        user_id_str = str(user_id)
+
+        # 获取用户信息用于 username/nickname 匹配
+        username = ""
+        nickname = ""
+        with get_db() as db:
+            user = db.query(UserORM).filter(UserORM.id == user_id).first()
+            if user:
+                username = (user.username or "").strip()
+                nickname = (user.nickname or "").strip()
+
         for c in self._companions.values():
+            created_by = (c.profile.created_by or "").strip()
+
+            # 必须匹配：created_by == user_id 或 username 或 nickname
+            if created_by != user_id_str and created_by != username and created_by != nickname:
+                continue  # 不属于该用户，跳过
+
             item = c.to_dict(user_id=user_id)
             recent = c.memory.short_term.get_recent(1)
             if recent:

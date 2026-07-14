@@ -5,7 +5,7 @@ import requests
 DASHSCOPE_API_KEY = "sk-f6ea7e4bdd35459ba0b93dcd659b8744"
 # 裸域名标准多模态文生图接口（官方推荐，不会报url error）
 API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation"
-# 你的文生图完整模型标111git识
+# 你的文生图完整模型标识
 MODEL_NAME = "qwen-image-2.0-pro-2026-04-22"
 
 def alibaba_text_to_image(prompt: str, width: int = 1024, height: int = 1024):
@@ -61,7 +61,11 @@ def alibaba_text_to_image(prompt: str, width: int = 1024, height: int = 1024):
             print(f"错误响应内容：{e.response.text}")
         return None
 
+# pytest测试入口
+def test_alibaba_text_to_image():
+    test_prompt = "二次元男生，海边日落，治愈插画，高质量，柔和光影"
+    alibaba_text_to_image(prompt=test_prompt, width=1024, height=1024)
 
 if __name__ == "__main__":
-    test_prompt = "二次元少女，海边日落，治愈插画，高质量，柔和光影"
+    test_prompt = "二次元男生，海边日落，治愈插画，高质量，柔和光影"
     alibaba_text_to_image(prompt=test_prompt, width=1024, height=1024)

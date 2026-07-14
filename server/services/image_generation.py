@@ -7,9 +7,9 @@ import time
 import urllib.parse
 from pathlib import Path
 from typing import List, Optional, Tuple
-
+from dotenv import load_dotenv
 import requests  # 统一在顶部导入，避免函数内重123复 impor123t
-
+load_dotenv()
 from core.config import BASE_DIR
 
 from services.cos_storage import is_cos_enabled, upload_file_to_cos, upload_bytes_to_cos
@@ -25,8 +25,10 @@ _XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
 _XAI_IMAGE_API_URL = "https://api.x.ai/v1/images/generations"
 
 # 阿里云百炼 DashScope 文生图配置
-_ALIBABA_DASHSCOPE_API_KEY = os.environ.get("DASHSCOPE_API_KEY", "")
-_ALIBABA_IMAGE_API_URL = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text2image/image-synthesis"
+DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY")
+API_URL = os.getenv("API_URL")
+MODEL_NAME = os.getenv("MODEL_NAME")
+
 
 # 图片风格增强词
 _STYLE_ENHANCEMENTS = {
@@ -256,102 +258,68 @@ def generate_image_with_alibaba(
     height: int = 1024,
     config: Optional[dict] = None,
 ) -> Optional[str]:
-    """使用阿里云百炼DashScope文生图API生成图片，返回图片临时URL。
-    鉴权仅使用 DASHSCOPE_API_KEY Bearer 模式，无AK/SK签名。
-    """
-    # 1. 自动读取数据库中 provider=alibaba 的配置
-    if config is None:
-        configs = _get_active_image_gen_configs()
-        for cfg in configs:
-            if cfg.get("provider", "").lower() == "alibaba":
-                config = cfg
-                break
-    if not config:
-        return None
-
-    provider = config.get("provider", "")
-    if provider.lower() != "alibaba":
-        return None
-
-    # 2. 读取配置字段
-    api_key = config.get("api_key", "").strip()
-    model = config.get("model", "qwen-image-2.0-pro")
-    base_url = config.get("base_url", _ALIBABA_IMAGE_API_URL)
-    timeout = config.get("timeout", 120)
-    negative_prompt = config.get("negative_prompt", "").strip()
-
-    # 校验密钥
-    if not api_key:
-        logger.info("Alibaba DashScope image generation skipped: missing DASHSCOPE_API_KEY")
-        return None
-
-    try:
-        # 提示词超长截断，与火山逻辑统一
-        prompt_clean = (prompt or "").strip()
-        max_prompt_len = 1800
-        if len(prompt_clean) > max_prompt_len:
-            logger.warning(
-                f"Alibaba prompt length {len(prompt_clean)} exceeds limit {max_prompt_len}, auto truncated"
-            )
-            prompt_clean = prompt_clean[:max_prompt_len] + "..."
-
-        # 阿里百炼标准请求体（适配qwen-image-2.0-pro）
-        payload = {
-            "model": model,
-            "input": {
-                "prompt": prompt_clean
-            },
-            "parameters": {
-                "size": f"{width}*{height}",
-                "n": 1,
-                "response_format": "url"
-            }
+    # 强制忽略数据库config，只用全局密钥
+    config = None
+    logger.info("===== 进入阿里云绘图函数，开始执行 =====")
+    headers = {
+        "Authorization": f"Bearer {DASHSCOPE_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": MODEL_NAME,
+        "input": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt}
+                    ]
+                }
+            ]
+        },
+        "parameters": {
+            "size": f"{width}*{height}",
+            "n": 1
         }
-        # 存在负面提示词追加
-        if negative_prompt:
-            payload["parameters"]["negative_prompt"] = negative_prompt
-
-        # Bearer鉴权请求
-        resp = requests.post(
-            base_url,
-            json=payload,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            timeout=timeout,
-        )
+    }
+    try:
+        resp = requests.post(API_URL, headers=headers, json=payload, timeout=120)
         resp.raise_for_status()
-        data = resp.json()
+        res_data = resp.json()
 
-        # 解析返回结构：output.results[0].url
-        output = data.get("output", {})
-        results = output.get("results", [])
-        if not isinstance(results, list) or len(results) == 0:
-            logger.warning("Alibaba API response empty results, no image generated")
+        logger.info("阿里云完整返回报文: %s", json.dumps(res_data, ensure_ascii=False))
+
+        output = res_data.get("output", {})
+        # 修复1：读取choices，不是results
+        choices = output.get("choices", [])
+        if not choices:
+            logger.warning("Alibaba API empty choices")
             return None
 
-        url = results[0].get("url")
-        if not url:
-            logger.warning("Alibaba generate success but missing image url")
+        content_list = choices[0].get("message", {}).get("content", [])
+        img_url = None
+        for item in content_list:
+            # 修复2：接口无type字段，直接读取image键
+            if "image" in item:
+                img_url = item.get("image")
+                break
+        if not img_url:
+            logger.warning("Alibaba no image url returned")
             return None
-
-        logger.info("Alibaba DashScope image generation succeeded with URL: %s...", url[:60])
-        return url
+        return img_url
 
     except requests.exceptions.RequestException as e:
         detail = ""
         resp = getattr(e, "response", None)
-        if resp is not None:
-            try:
-                detail = (resp.text or "")[:1200]
-            except Exception:
-                pass
-        logger.warning("Alibaba DashScope HTTP request failed: %s %s", e, detail or "")
+        if resp:
+            detail = resp.text[:1200]
+        logger.warning("Alibaba HTTP failed %s | %s", e, detail)
     except Exception as e:
-        logger.warning("Alibaba DashScope image generation failed: %s", e)
-
+        logger.warning("Alibaba generate error %s", e)
     return None
+
+
+
 
 def _get_cache_path(prompt: str) -> Path:
     """根据 prompt 生成缓存文件路径"""
@@ -614,7 +582,8 @@ def generate_image_with_cache(
     configs = _get_active_image_gen_configs()
     alibaba_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "alibaba"]
     for config in alibaba_configs:
-        url = generate_image_with_alibaba(full_prompt, width, height, config=config)
+        url= generate_image_with_alibaba(full_prompt, width, height, config=config)
+        # 上传
         if not url:
             continue
         try:

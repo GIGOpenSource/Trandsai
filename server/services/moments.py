@@ -1,3 +1,4 @@
+import os
 import random
 import logging
 from datetime import datetime, timezone
@@ -5,7 +6,7 @@ from typing import List, Optional
 
 from sqlalchemy import case, desc, func
 from sqlalchemy.exc import IntegrityError
-
+from dotenv import load_dotenv
 from core.database import CompanionORM, MomentCommentORM, MomentLikeORM, MomentORM, get_db, serialize_datetime
 from core.i18n import normalize_ui_language
 from core.state import get_companion_manager
@@ -13,7 +14,7 @@ from services.agent import get_llm
 from services.companion_manager import Companion
 from services.image_generation import generate_image_with_cache, generate_moment_image_prompt
 from services.culture_data import infer_language_from_city
-
+load_dotenv()
 logger = logging.getLogger(__name__)
 
 def _profile_lang(companion: Companion) -> str:
@@ -371,17 +372,17 @@ def generate_moment_caption(companion: Companion, lang: str = "zh", max_retries:
     """调用 LLM 为伴侣生成一条朋友圈文案，带有去重机制"""
     companion_id = companion.profile.id if companion.profile else None
     try:
-        llm = get_llm(temperature=0.9, max_tokens=150)
+        max_token = int(os.getenv("MAX_TOKENS", 512))
+        llm = get_llm(temperature=0.9, max_tokens=max_token)
         prompt = _build_moment_prompt(companion, lang)
 
         for attempt in range(max_retries):
             resp = llm.invoke([("human", prompt)])
-            text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
-            # 清理可能的引号或前缀
+            raw_content = resp.content
+            text = raw_content.strip()
             text = text.strip('"').strip("'").strip()
             if len(text) > 200:
                 text = text[:200]
-
             # 去重检查（全局去重，禁止任何重复文案）
             if not _is_caption_duplicate(text, None):
                 return text
@@ -729,12 +730,44 @@ def get_moment_detail(moment_id: int, device_id: str = "") -> Optional[dict]:
         }
 
 
+def _get_user_companion_ids(user_id: int) -> List[str]:
+    """获取用户拥有的 companion ID 列表（通过 created_by 匹配）。"""
+    user_id_str = str(user_id)
+    username = ""
+    nickname = ""
+
+    with get_db() as db:
+        user = db.query(UserORM).filter(UserORM.id == user_id).first()
+        if user:
+            username = (user.username or "").strip()
+            nickname = (user.nickname or "").strip()
+        else:
+            return []
+
+    with get_db() as db:
+        companions = db.query(CompanionORM).all()
+        result = []
+        for c in companions:
+            cb = (c.created_by or "").strip()
+            if cb == user_id_str or cb == username or cb == nickname:
+                result.append(c.id)
+        return result
+
+
 def count_moments_feed(
     filter_lang: str = "",
     gender: str = "",
     orientation: str = "",
+    user_id: Optional[int] = None,
 ) -> int:
     """与 get_moments_feed 相同的筛选条件下统计总数（用于分页）。"""
+    if user_id is None:
+        return 0
+
+    user_companion_ids = _get_user_companion_ids(user_id)
+    if not user_companion_ids:
+        return 0
+
     fl = (filter_lang or "").strip().split("-")[0] if filter_lang else ""
     g = (gender or "").strip()
     ori = (orientation or "").strip()
@@ -742,6 +775,7 @@ def count_moments_feed(
         query = db.query(func.count(MomentORM.id)).outerjoin(
             CompanionORM, MomentORM.companion_id == CompanionORM.id
         )
+        query = query.filter(MomentORM.companion_id.in_(user_companion_ids))
         if fl:
             query = query.filter(CompanionORM.language == fl)
         if g:
@@ -759,19 +793,30 @@ def get_moments_feed(
     filter_lang: str = "",
     gender: str = "",
     orientation: str = "",
+    user_id: Optional[int] = None,
 ) -> List[dict]:
     """获取朋友圈 feed，包含点赞状态。
-    若传入 lang，则优先展示对应语言 companion 发布的内容，再按时间倒序排列。
-    filter_lang / gender / orientation：可选筛选条件（按智能体属性过滤）。
+    必须提供 user_id，只返回该用户拥有的 companions 发布的朋友圈。
     """
+    if user_id is None:
+        return []
+
     target_lang = (lang or "").split("-")[0] or ""
     fl = (filter_lang or "").strip().split("-")[0] if filter_lang else ""
     g = (gender or "").strip()
     ori = (orientation or "").strip()
+
+    # 获取用户拥有的 companion IDs
+    user_companion_ids = _get_user_companion_ids(user_id)
+    if not user_companion_ids:
+        return []
+
     with get_db() as db:
         query = db.query(MomentORM).outerjoin(
             CompanionORM, MomentORM.companion_id == CompanionORM.id
         )
+        # 只返回用户自己的 companions 发布的朋友圈
+        query = query.filter(MomentORM.companion_id.in_(user_companion_ids))
         if fl:
             query = query.filter(CompanionORM.language == fl)
         if g:

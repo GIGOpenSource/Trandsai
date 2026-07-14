@@ -46,16 +46,17 @@ def get_llm(
                 return v
         return os.getenv(env_name, "") or ""
 
+
     if provider == "deepseek":
         api_key = _override_or_env("deepseek_key", "DEEPSEEK_API_KEY")
         if not api_key:
             raise RuntimeError("请设 변수 DEEPSEEK_API_KEY를 설정해주세요.")
         return ChatOpenAI(
-            model="deepseek-chat",
+            model="deepseek-v4-flash",  # 对应你截图里的模型Code
             temperature=temperature,
             max_tokens=max_tokens,
             api_key=api_key,
-            base_url="https://api.deepseek.com/v1",
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 百炼固定兼容地址
         )
 
     if provider == "openai":

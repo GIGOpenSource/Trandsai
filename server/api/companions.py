@@ -292,12 +292,16 @@ async def require_login_user(
 
 
 def _assert_companion_user_access(companion, user_id: int) -> None:
-    """created_by 与登录用户匹配时可访问；为空表示旧数据则任意登录用户可访问。"""
+    """验证用户是否有权访问该 companion。只有 created_by 匹配当前用户才能访问。"""
     cb = (companion.profile.created_by or "").strip()
+
+    # 必须有 created_by 且匹配当前用户
     if not cb:
-        return
+        raise HTTPException(status_code=403, detail="无权访问该智能体")
+
     if cb == str(user_id):
         return
+
     with get_db() as db:
         user = db.query(UserORM).filter(UserORM.id == user_id).first()
         if user:
@@ -305,6 +309,7 @@ def _assert_companion_user_access(companion, user_id: int) -> None:
             uname = (user.username or "").strip()
             if cb == nick or cb == uname:
                 return
+
     raise HTTPException(status_code=403, detail="无权访问该智能体")
 
 
@@ -640,8 +645,15 @@ async def api_generate_persona(data: dict):
 
 
 @router.post("/companions")
-async def api_create_companion(data: dict):
+async def api_create_companion(data: dict, x_token: Optional[str] = Header(None, alias="x-token")):
+    """创建智能体，自动关联当前登录用户（设置 created_by）"""
     try:
+        # 验证用户身份
+        user_id = verify_user_token(x_token) if x_token else None
+        if user_id:
+            # 设置 created_by 为当前用户 ID
+            data["created_by"] = str(user_id)
+
         chat_history = data.pop("chat_history", None)
         companion = get_companion_manager().create(data, chat_history=chat_history)
         # 启动后台异步生成头像
@@ -654,9 +666,12 @@ async def api_create_companion(data: dict):
 
 @router.get("/companions")
 async def api_list_companions(x_token: Optional[str] = Header(None, alias="x-token")):
+    """获取当前用户的 companions 列表。必须登录，否则返回空列表。"""
     uid = verify_user_token(x_token) if x_token else None
+    if not uid:
+        # 未登录返回空列表，不泄露任何数据
+        return []
     return get_companion_manager().list_all(user_id=uid)
-
 
 @router.get("/companions/{companion_id}")
 async def api_get_companion(companion_id: str, user_id: int = Depends(require_login_user)):
