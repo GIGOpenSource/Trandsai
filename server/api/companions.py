@@ -38,6 +38,9 @@ from core.i18n import (
 )
 from services.async_tasks import start_avatar_generation
 
+from fastapi import Depends, Header
+from core.permissions import IsAuthenticated, IsOwner, IsAdmin
+from core.dependencies import require_permissions, get_current_user
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -282,7 +285,7 @@ async def _deliver_assistant_content(
 
 
 async def require_login_user(
-    x_token: Optional[str] = Header(None, alias="x-token"),
+        x_token: Optional[str] = Header(None, alias="x-token"),
 ) -> int:
     """REST 接口：必须携带有效用户 Token（与 WebSocket IM 一致）。"""
     uid = verify_user_token(x_token) if x_token else None
@@ -643,16 +646,18 @@ async def api_generate_persona(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
+    # 创建 - 需要登录
+
 
 @router.post("/companions")
-async def api_create_companion(data: dict, x_token: Optional[str] = Header(None, alias="x-token")):
-    """创建智能体，自动关联当前登录用户（设置 created_by）"""
+async def api_create_companion(
+        data: dict,
+        user_id: int = Depends(require_permissions(IsAuthenticated))
+):
+    """创建智能体，自动关联当前登录用户"""
     try:
-        # 验证用户身份
-        user_id = verify_user_token(x_token) if x_token else None
-        if user_id:
-            # 设置 created_by 为当前用户 ID
-            data["created_by"] = str(user_id)
+        # 设置创建者
+        data["created_by"] = str(user_id)
 
         chat_history = data.pop("chat_history", None)
         companion = get_companion_manager().create(data, chat_history=chat_history)
@@ -665,45 +670,48 @@ async def api_create_companion(data: dict, x_token: Optional[str] = Header(None,
 
 
 @router.get("/companions")
-async def api_list_companions(x_token: Optional[str] = Header(None, alias="x-token")):
-    """获取当前用户的 companions 列表。必须登录，否则返回空列表。"""
-    uid = verify_user_token(x_token) if x_token else None
-    if not uid:
-        # 未登录返回空列表，不泄露任何数据
-        return []
-    return get_companion_manager().list_all(user_id=uid)
+async def api_list_companions(
+        x_token: Optional[str] = Header(None, alias="x-token"),
+        user_id: int = Depends(require_permissions(IsAuthenticated))
+):
+    """获取当前用户的 companions 列表"""
+    return get_companion_manager().list_all(user_id=user_id)
+
 
 @router.get("/companions/{companion_id}")
-async def api_get_companion(companion_id: str, user_id: int = Depends(require_login_user)):
-    companion = get_companion_manager().get(companion_id)
-    if not companion:
-        raise HTTPException(status_code=404, detail="智能体不存在")
-    _assert_companion_user_access(companion, user_id)
-    return companion.to_dict(user_id=user_id)
-
-
-@router.get("/companions/{companion_id}/messages")
-async def api_get_messages(
-    companion_id: str,
-    limit: int = 20,
-    offset: int = 0,
-    user_id: int = Depends(require_login_user),
+async def api_get_companion(
+        companion_id: str,
+        user_id: int = Depends(require_permissions(IsOwner))
 ):
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    _assert_companion_user_access(companion, user_id)
-    messages = companion.memory.short_term.get_recent(limit, offset)
-    return {"messages": messages, "total": companion.memory.short_term.get_total_count()}
+    return companion.to_dict(user_id=user_id)
+
+@router.get("/companions/{companion_id}/messages")
+async def api_get_messages(
+  companion_id: str,
+  limit: int = 20,
+  offset: int = 0,
+  user_id: int = Depends(require_permissions(IsOwner))
+):
+  companion = get_companion_manager().get(companion_id)
+  if not companion:
+      raise HTTPException(status_code=404, detail="智能体不存在")
+  messages = companion.memory.short_term.get_recent(limit, offset)
+  return {"messages": messages, "total": companion.memory.short_term.get_total_count()}
 
 
+# 生成头像 - 需要是所有者
 @router.post("/companions/{companion_id}/generate-avatar")
-async def api_generate_avatar(companion_id: str, user_id: int = Depends(require_login_user)):
+async def api_generate_avatar(
+        companion_id: str,
+        user_id: int = Depends(require_permissions(IsOwner))
+):
     """基于人设 AI 生成动漫风格头像"""
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    _assert_companion_user_access(companion, user_id)
 
     prompt = generate_avatar_prompt(companion.profile.model_dump())
     image_url = generate_image_with_cache(prompt, style="portrait", width=512, height=512)
@@ -713,12 +721,15 @@ async def api_generate_avatar(companion_id: str, user_id: int = Depends(require_
     return {"ok": True, "avatar_url": image_url}
 
 
+# 删除 - 需要是所有者
 @router.delete("/companions/{companion_id}")
-async def api_delete_companion(companion_id: str, user_id: int = Depends(require_login_user)):
+async def api_delete_companion(
+        companion_id: str,
+        user_id: int = Depends(require_permissions(IsOwner))
+):
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    _assert_companion_user_access(companion, user_id)
     ok = get_companion_manager().delete(companion_id)
     if not ok:
         raise HTTPException(status_code=404, detail="智能体不存在")
@@ -726,12 +737,14 @@ async def api_delete_companion(companion_id: str, user_id: int = Depends(require
 
 
 @router.post("/companions/{companion_id}/clear-messages")
-async def api_clear_messages(companion_id: str, user_id: int = Depends(require_login_user)):
+async def api_clear_messages(
+        companion_id: str,
+        user_id: int = Depends(require_permissions(IsOwner))
+):
     """清空该智能体的聊天记录（短期记忆），并将亲密度归零"""
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    _assert_companion_user_access(companion, user_id)
     companion.memory.short_term.clear()
     companion.state.affection = 0
     companion.state.turns = 0

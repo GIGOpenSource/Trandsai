@@ -6,10 +6,11 @@ from typing import Optional
 import redis
 
 # Redis 配置
-REDIS_HOST = "localhost"
+REDIS_HOST ="101.32.179.223"
 REDIS_PORT = 6379
+MAX_CONNECTIONS=20
 REDIS_DB = 0
-REDIS_PASSWORD = None
+REDIS_PASSWORD ="Redis@2026#0119"
 
 # Token 过期时间（7天）
 TOKEN_EXPIRE_HOURS = 7 * 24

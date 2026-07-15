@@ -14,7 +14,9 @@ from services.moments import (
     regenerate_moment_image,
     toggle_like,
 )
-
+from fastapi import Depends
+from core.permissions import IsAuthenticated, IsOwner
+from core.dependencies import require_permissions, get_optional_user
 router = APIRouter()
 
 
@@ -25,13 +27,14 @@ def _get_device_id(x_device_id: Optional[str] = None) -> str:
 
 @router.get("/api/moments")
 async def api_list_moments(
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    lang: Optional[str] = Query(None),
-    filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
-    gender: Optional[str] = Query(None, description="男/女"),
-    orientation: Optional[str] = Query(None, description="性取向"),
-    x_device_id: Optional[str] = Header(None),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        lang: Optional[str] = Query(None),
+        filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
+        gender: Optional[str] = Query(None, description="男/女"),
+        orientation: Optional[str] = Query(None, description="性取向"),
+        x_device_id: Optional[str] = Header(None),
+        user_id: int = Depends(require_permissions(IsAuthenticated)),  # 新增
 ):
     """获取朋友圈列表，包含评论"""
     device_id = _get_device_id(x_device_id)
@@ -43,7 +46,20 @@ async def api_list_moments(
         filter_lang=filter_lang or "",
         gender=gender or "",
         orientation=orientation or "",
+        user_id=user_id,  # 新增
     )
+
+    # 为每条朋友圈加载评论
+    for moment in moments:
+        moment["comments"] = get_moment_comments(moment["id"], limit=10)
+
+    total = count_moments_feed(
+        filter_lang=filter_lang or "",
+        gender=gender or "",
+        orientation=orientation or "",
+        user_id=user_id,  # 新增
+    )
+    return {"moments": moments, "total": total}
 
     # 为每条朋友圈加载评论
     for moment in moments:
@@ -59,8 +75,9 @@ async def api_list_moments(
 
 @router.get("/api/moments/{moment_id}")
 async def api_get_moment_detail(
-    moment_id: int,
-    x_device_id: Optional[str] = Header(None),
+        moment_id: int,
+        x_device_id: Optional[str] = Header(None),
+        user_id: int = Depends(require_permissions(IsOwner)),  # 新增
 ):
     """获取单条朋友圈详情，包含评论"""
     device_id = _get_device_id(x_device_id)
@@ -75,6 +92,7 @@ async def api_get_moment_detail(
 async def api_toggle_like(
     moment_id: int,
     x_device_id: Optional[str] = Header(None),
+    user_id: int = Depends(require_permissions(IsAuthenticated)),
 ):
     """点赞或取消点赞"""
     device_id = _get_device_id(x_device_id)
@@ -88,6 +106,7 @@ async def api_toggle_like(
 async def api_companion_moments(
     companion_id: str,
     limit: int = Query(20, ge=1, le=100),
+    user_id: int = Depends(require_permissions(IsOwner)),
 ):
     """获取某个伴侣的所有朋友圈"""
     moments = get_companion_moments(companion_id, limit=limit)
@@ -100,6 +119,7 @@ async def api_add_comment(
     x_device_id: Optional[str] = Header(None),
     content: str = Body(..., embed=True),
     parent_id: Optional[int] = Body(None, embed=True),
+    user_id: int = Depends(require_permissions(IsAuthenticated)),
 ):
     """用户发表评论或回复评论"""
     device_id = _get_device_id(x_device_id)
@@ -110,7 +130,7 @@ async def api_add_comment(
 
 
 @router.post("/api/moments/{moment_id}/regenerate-image")
-async def api_regenerate_moment_image(moment_id: int):
+async def api_regenerate_moment_image(moment_id: int,user_id: int = Depends(require_permissions(IsOwner))):
     """根据朋友圈文案重新生成配图"""
     new_url = regenerate_moment_image(moment_id)
     if not new_url:

@@ -7,7 +7,7 @@ from typing import List, Optional
 from sqlalchemy import case, desc, func
 from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
-from core.database import CompanionORM, MomentCommentORM, MomentLikeORM, MomentORM, get_db, serialize_datetime
+from core.database import CompanionORM, MomentCommentORM, MomentLikeORM, MomentORM, UserORM, get_db, serialize_datetime
 from core.i18n import normalize_ui_language
 from core.state import get_companion_manager
 from services.agent import get_llm

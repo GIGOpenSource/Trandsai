@@ -1,8 +1,10 @@
 from dotenv import load_dotenv
 import os
 # 加载.env配置
-load_dotenv()
 
+from fastapi import FastAPI
+from core.middleware import TokenAuthMiddleware
+from core.auth import init_redis
 import asyncio
 import logging
 import os
@@ -35,7 +37,7 @@ from core.state import get_companion_manager, set_companion_manager
 from services.companion_manager import CompanionManager
 from services.knowledge_base import import_cultural_knowledge
 from services.memory import start_embedding_download
-
+load_dotenv()
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 logger = logging.getLogger(__name__)
 
@@ -89,6 +91,7 @@ async def _moment_scheduler():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    init_redis()
     admin_password = (os.getenv("ADMIN_PASSWORD") or "").strip()
     if not admin_password or admin_password == "admin123":
         raise RuntimeError("ADMIN_PASSWORD is missing or insecure; please set a strong password")
@@ -257,7 +260,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app.add_middleware(TokenAuthMiddleware)
 # 用户前端 SPA 静态资源（构建产物 dist/assets）
 if DIST_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")

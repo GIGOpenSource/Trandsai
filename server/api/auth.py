@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 
 from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserORM, get_db
-
+from core.auth import generate_token, delete_token
 router = APIRouter()
 
 _PBKDF2_ROUNDS = 200_000
@@ -195,6 +195,7 @@ async def user_login(data: dict):
             "id": user.id,
             "username": user.username,
             "nickname": user.nickname,
+            "role": user.role or "user",
             "gender": user.gender,
             "sexual_orientation": user.sexual_orientation or "",
             "age": user.age,
@@ -202,9 +203,14 @@ async def user_login(data: dict):
             "occupation": user.occupation or "",
         }
 
-    token = create_user_token(user_id)
+    token = generate_token(user_id)
     return {"token": token, "user": out_user}
-
+@router.post("/api/auth/logout")
+async def user_logout(x_token: Optional[str] = Header(None)):
+  """登出：删除 Redis 中的 Token"""
+  if x_token:
+      delete_token(x_token)
+  return {"ok": True}
 
 @router.get("/api/auth/me")
 async def user_me(x_token: Optional[str] = Header(None)):

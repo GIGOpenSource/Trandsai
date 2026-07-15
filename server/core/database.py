@@ -215,6 +215,7 @@ class UserORM(Base):
     avatar_url = Column(String(500), default="")
     token = Column(String(128), default="")  # 增加token长度
     token_expire = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    role = Column(String(20), default="user")  # 新增：admin/staff/user
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
