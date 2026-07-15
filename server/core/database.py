@@ -50,7 +50,7 @@ Base = declarative_base()
 
 
 # ===== ORM Models =====
-
+#表名 companions
 class CompanionORM(Base):
     __tablename__ = "companions"
     id = Column(String(8), primary_key=True)
@@ -183,9 +183,9 @@ class MomentLikeORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     moment_id = Column(Integer, nullable=False, index=True)
     device_id = Column(String(64), nullable=False)
+    # user_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     __table_args__ = (
-        Index("idx_moment_like", "moment_id", "device_id"),
         Index("uniq_moment_like", "moment_id", "device_id", unique=True),
     )
 
@@ -399,6 +399,7 @@ def _alter_column_length(table_name: str, column_name: str, new_type: str):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # _ensure_column("moment_likes", "user_id", "INTEGER")
     # 兼容：为已存在的 companion_states 表添加进化字段
     _ensure_column("companion_states", "evolved_personality", "TEXT")
     _ensure_column("companion_states", "evolved_background", "TEXT")

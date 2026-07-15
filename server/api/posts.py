@@ -34,8 +34,8 @@ def _get_user_from_token(x_token: Optional[str] = None) -> Optional[dict]:
     if not x_token:
         return None
     try:
-        from api.auth import verify_user_token
-        user_id = verify_user_token(x_token)
+        from core.auth import verify_token as redis_verify_token
+        user_id = redis_verify_token(x_token)
         if not user_id:
             return None
         from core.database import UserORM, get_db
@@ -278,14 +278,14 @@ async def api_upload_image(
 ):
     """上传图片，返回可访问的 URL"""
     ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-    MAX_SIZE = 5 * 1024 * 1024  # 5MB
+    MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail="仅支持 jpeg/png/gif/webp 图片")
 
     content = await file.read()
     if len(content) > MAX_SIZE:
-        raise HTTPException(status_code=400, detail="图片大小不能超过 5MB")
+        raise HTTPException(status_code=400, detail="图片大小不能超过 10MB")
 
     ext = {
         "image/jpeg": ".jpg",

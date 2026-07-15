@@ -8,7 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Header, HTTPException
 
 from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserORM, get_db
-from core.auth import generate_token, delete_token
+from core.auth import generate_token, delete_token, verify_token as redis_verify_token
 router = APIRouter()
 
 _PBKDF2_ROUNDS = 200_000
@@ -172,7 +172,7 @@ async def user_register(data: dict):
             "occupation": user.occupation or "",
         }
 
-    token = create_user_token(user_id)
+    token = generate_token(user_id)
     return {"token": token, "user": out_user}
 
 
@@ -214,7 +214,7 @@ async def user_logout(x_token: Optional[str] = Header(None)):
 
 @router.get("/api/auth/me")
 async def user_me(x_token: Optional[str] = Header(None)):
-    user_id = verify_user_token(x_token) if x_token else None
+    user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录或Token已过期")
 
@@ -239,7 +239,7 @@ async def user_me(x_token: Optional[str] = Header(None)):
 
 @router.patch("/api/auth/me")
 async def user_update_me(data: dict, x_token: Optional[str] = Header(None)):
-    user_id = verify_user_token(x_token) if x_token else None
+    user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录或Token已过期")
 
@@ -293,46 +293,55 @@ def clear_all_admin_tokens():
 
 @router.get("/api/users/stats")
 async def user_stats(x_token: Optional[str] = Header(None)):
-    """获取用户统计数据（伴侣数、总对话轮数、陪伴天数）"""
-    user_id = verify_user_token(x_token) if x_token else None
+    """获取当前用户的统计数据（伴侣数、总对话轮数、陪伴天数）"""
+    user_id = redis_verify_token(x_token) if x_token else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="请先登录")
 
     from datetime import datetime, timezone
 
-    with get_db() as db:
-        # 全局 companion 统计
-        companions = db.query(CompanionORM).all()
-        companion_count = len(companions)
+    user_id_str = str(user_id)
 
-        # 统计总对话轮数
+    with get_db() as db:
+        # 获取当前用户信息
+        user = db.query(UserORM).filter(UserORM.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
+
+        # 获取用户拥有的 companions（通过 created_by 匹配）
+        username = (user.username or "").strip()
+        nickname = (user.nickname or "").strip()
+
+        all_companions = db.query(CompanionORM).all()
+        user_companions = []
+        for c in all_companions:
+            cb = (c.created_by or "").strip()
+            if cb == user_id_str:
+                user_companions.append(c)
+
+        companion_count = len(user_companions)
+
+        # 统计用户 companions 的总对话轮数
         total_turns = 0
-        for c in companions:
+        for c in user_companions:
             state = db.query(CompanionStateORM).filter(CompanionStateORM.companion_id == c.id).first()
             if state:
                 total_turns += state.turns or 0
 
-        # 陪伴天数
+        # 陪伴天数：从用户最早创建的伴侣算起
         days_together = 0
-        if user_id:
-            user = db.query(UserORM).filter(UserORM.id == user_id).first()
-            if user and user.created_at:
-                now = datetime.now(timezone.utc)
-                created = user.created_at
-                if created.tzinfo is None:
-                    created = created.replace(tzinfo=timezone.utc)
-                days_together = max(1, (now - created).days)
-        else:
-            # 未登录：用最早创建的 companion 来算
-            if companions:
-                earliest = None
-                for c in companions:
-                    if c.created_at:
-                        if earliest is None or c.created_at < earliest:
-                            earliest = c.created_at
-                if earliest:
-                    now = datetime.now(timezone.utc)
-                    if earliest.tzinfo is None:
-                        earliest = earliest.replace(tzinfo=timezone.utc)
-                    days_together = max(1, (now - earliest).days)
+        if user_companions:
+            now = datetime.now(timezone.utc)
+            earliest = None
+            for c in user_companions:
+                if c.created_at:
+                    ct = c.created_at
+                    if ct.tzinfo is None:
+                        ct = ct.replace(tzinfo=timezone.utc)
+                    if earliest is None or ct < earliest:
+                        earliest = ct
+            if earliest:
+                days_together =(now - earliest).days
 
     return {
         "companion_count": companion_count,

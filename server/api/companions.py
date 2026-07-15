@@ -11,7 +11,7 @@ from langchain_core.messages import SystemMessage
 from starlette.websockets import WebSocketState
 from typing import List, Optional, Tuple
 
-from api.auth import verify_user_token
+from core.auth import verify_token as redis_verify_token
 from core.database import UserORM, get_db
 from core.config import (
     _AGENT_TIMEOUT_MESSAGE,
@@ -288,7 +288,7 @@ async def require_login_user(
         x_token: Optional[str] = Header(None, alias="x-token"),
 ) -> int:
     """REST 接口：必须携带有效用户 Token（与 WebSocket IM 一致）。"""
-    uid = verify_user_token(x_token) if x_token else None
+    uid = redis_verify_token(x_token) if x_token else None
     if uid is None:
         raise HTTPException(status_code=401, detail="请先登录")
     return uid
@@ -681,7 +681,7 @@ async def api_list_companions(
 @router.get("/companions/{companion_id}")
 async def api_get_companion(
         companion_id: str,
-        user_id: int = Depends(require_permissions(IsOwner))
+        user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
     companion = get_companion_manager().get(companion_id)
     if not companion:
@@ -760,7 +760,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
 
     # 安全优化：验证用户 token
     token = websocket.query_params.get("token")
-    user_id = verify_user_token(token) if token else None
+    user_id = redis_verify_token(token) if token else None
     if not user_id:
         try:
             err = _WS_AUTH_FAILED.get(ui_lang_early, _WS_AUTH_FAILED["zh"])

@@ -758,16 +758,8 @@ def count_moments_feed(
     filter_lang: str = "",
     gender: str = "",
     orientation: str = "",
-    user_id: Optional[int] = None,
 ) -> int:
     """与 get_moments_feed 相同的筛选条件下统计总数（用于分页）。"""
-    if user_id is None:
-        return 0
-
-    user_companion_ids = _get_user_companion_ids(user_id)
-    if not user_companion_ids:
-        return 0
-
     fl = (filter_lang or "").strip().split("-")[0] if filter_lang else ""
     g = (gender or "").strip()
     ori = (orientation or "").strip()
@@ -775,7 +767,6 @@ def count_moments_feed(
         query = db.query(func.count(MomentORM.id)).outerjoin(
             CompanionORM, MomentORM.companion_id == CompanionORM.id
         )
-        query = query.filter(MomentORM.companion_id.in_(user_companion_ids))
         if fl:
             query = query.filter(CompanionORM.language == fl)
         if g:
@@ -784,7 +775,7 @@ def count_moments_feed(
             query = query.filter(CompanionORM.sexual_orientation == ori)
         return int(query.scalar() or 0)
 
-
+# 首页列表
 def get_moments_feed(
     limit: int = 20,
     offset: int = 0,
@@ -793,30 +784,18 @@ def get_moments_feed(
     filter_lang: str = "",
     gender: str = "",
     orientation: str = "",
-    user_id: Optional[int] = None,
 ) -> List[dict]:
-    """获取朋友圈 feed，包含点赞状态。
-    必须提供 user_id，只返回该用户拥有的 companions 发布的朋友圈。
-    """
-    if user_id is None:
-        return []
-
+    """获取朋友圈 feed，包含点赞状态。返回所有人的 companions 发布的朋友圈。"""
     target_lang = (lang or "").split("-")[0] or ""
     fl = (filter_lang or "").strip().split("-")[0] if filter_lang else ""
     g = (gender or "").strip()
     ori = (orientation or "").strip()
 
-    # 获取用户拥有的 companion IDs
-    user_companion_ids = _get_user_companion_ids(user_id)
-    if not user_companion_ids:
-        return []
-
     with get_db() as db:
+        # 智能体 表 外键关联 动态表
         query = db.query(MomentORM).outerjoin(
             CompanionORM, MomentORM.companion_id == CompanionORM.id
         )
-        # 只返回用户自己的 companions 发布的朋友圈
-        query = query.filter(MomentORM.companion_id.in_(user_companion_ids))
         if fl:
             query = query.filter(CompanionORM.language == fl)
         if g:
@@ -831,10 +810,10 @@ def get_moments_feed(
         else:
             query = query.order_by(desc(MomentORM.created_at))
         moments = query.offset(offset).limit(limit).all()
-
+        # 返回的 动态表数据
         if not moments:
             return []
-
+        #m.id 帖子id
         moment_ids = [m.id for m in moments]
         liked_ids = set()
         if device_id:
@@ -901,33 +880,24 @@ def toggle_like(moment_id: int, device_id: str) -> dict:
             return {"ok": False, "error": "Moment not found"}
 
         if existing:
+            # 取消点赞
             db.delete(existing)
-            db.query(MomentORM).filter_by(id=moment_id).update(
-                {MomentORM.likes_count: func.max(MomentORM.likes_count - 1, 0)},
-                synchronize_session=False,
-            )
+            new_count = max((moment.likes_count or 0) - 1, 0)
+            moment.likes_count = new_count
             db.flush()
-            likes_count = (
-                db.query(MomentORM.likes_count).filter_by(id=moment_id).scalar() or 0
-            )
             liked = False
+            likes_count = new_count
         else:
+            # 点赞
             try:
                 db.add(MomentLikeORM(moment_id=moment_id, device_id=device_id))
-                db.flush()
-                db.query(MomentORM).filter_by(id=moment_id).update(
-                    {MomentORM.likes_count: MomentORM.likes_count + 1},
-                    synchronize_session=False,
-                )
+                moment.likes_count = (moment.likes_count or 0) + 1
                 db.flush()
                 liked = True
             except IntegrityError:
-                # 并发重复点赞，视为已点赞
                 db.rollback()
                 liked = True
-            likes_count = (
-                db.query(MomentORM.likes_count).filter_by(id=moment_id).scalar() or 0
-            )
+            likes_count = moment.likes_count or 0
 
         return {"ok": True, "liked": liked, "likes_count": likes_count}
 

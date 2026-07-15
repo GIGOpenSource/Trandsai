@@ -39,10 +39,9 @@ def require_permissions(*permissions: Type[BasePermission]):
             perm = perm_class()
             if not perm.has_permission(request, user_id):
                 raise HTTPException(
-                    status_code=403,
+                    status_code=200,
                     detail=f"权限不足: {perm_class.__name__}"
                 )
-
         if not user_id:
             raise HTTPException(status_code=401, detail="请先登录")
 

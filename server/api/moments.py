@@ -1,8 +1,10 @@
 import asyncio
 from typing import Optional
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
 
+from core.permissions import IsAuthenticated, IsOwner
+from core.dependencies import require_permissions, get_optional_user
 from core.state import get_companion_manager
 from services.moments import (
     add_user_comment,
@@ -14,9 +16,7 @@ from services.moments import (
     regenerate_moment_image,
     toggle_like,
 )
-from fastapi import Depends
-from core.permissions import IsAuthenticated, IsOwner
-from core.dependencies import require_permissions, get_optional_user
+
 router = APIRouter()
 
 
@@ -27,16 +27,15 @@ def _get_device_id(x_device_id: Optional[str] = None) -> str:
 
 @router.get("/api/moments")
 async def api_list_moments(
-        limit: int = Query(20, ge=1, le=100),
-        offset: int = Query(0, ge=0),
-        lang: Optional[str] = Query(None),
-        filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
-        gender: Optional[str] = Query(None, description="男/女"),
-        orientation: Optional[str] = Query(None, description="性取向"),
-        x_device_id: Optional[str] = Header(None),
-        user_id: int = Depends(require_permissions(IsAuthenticated)),  # 新增
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    lang: Optional[str] = Query(None),
+    filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
+    gender: Optional[str] = Query(None, description="男/女"),
+    orientation: Optional[str] = Query(None, description="性取向"),
+    x_device_id: Optional[str] = Header(None),
 ):
-    """获取朋友圈列表，包含评论"""
+    """获取朋友圈列表，包含评论（公开接口，所有人都能看到所有人的朋友圈）"""
     device_id = _get_device_id(x_device_id)
     moments = get_moments_feed(
         limit=limit,
@@ -46,25 +45,9 @@ async def api_list_moments(
         filter_lang=filter_lang or "",
         gender=gender or "",
         orientation=orientation or "",
-        user_id=user_id,  # 新增
     )
-
-    # 为每条朋友圈加载评论
     for moment in moments:
         moment["comments"] = get_moment_comments(moment["id"], limit=10)
-
-    total = count_moments_feed(
-        filter_lang=filter_lang or "",
-        gender=gender or "",
-        orientation=orientation or "",
-        user_id=user_id,  # 新增
-    )
-    return {"moments": moments, "total": total}
-
-    # 为每条朋友圈加载评论
-    for moment in moments:
-        moment["comments"] = get_moment_comments(moment["id"], limit=10)
-
     total = count_moments_feed(
         filter_lang=filter_lang or "",
         gender=gender or "",
@@ -73,21 +56,7 @@ async def api_list_moments(
     return {"moments": moments, "total": total}
 
 
-@router.get("/api/moments/{moment_id}")
-async def api_get_moment_detail(
-        moment_id: int,
-        x_device_id: Optional[str] = Header(None),
-        user_id: int = Depends(require_permissions(IsOwner)),  # 新增
-):
-    """获取单条朋友圈详情，包含评论"""
-    device_id = _get_device_id(x_device_id)
-    moment = get_moment_detail(moment_id, device_id=device_id)
-    if not moment:
-        raise HTTPException(status_code=404, detail="朋友圈不存在")
-    moment["comments"] = get_moment_comments(moment_id, limit=100)
-    return moment
-
-
+# POST 路由必须在 GET {moment_id} 之前，避免路径冲突
 @router.post("/api/moments/{moment_id}/like")
 async def api_toggle_like(
     moment_id: int,
@@ -100,17 +69,6 @@ async def api_toggle_like(
     if not result["ok"]:
         raise HTTPException(status_code=404, detail=result.get("error", "Not found"))
     return result
-
-
-@router.get("/api/companions/{companion_id}/moments")
-async def api_companion_moments(
-    companion_id: str,
-    limit: int = Query(20, ge=1, le=100),
-    user_id: int = Depends(require_permissions(IsOwner)),
-):
-    """获取某个伴侣的所有朋友圈"""
-    moments = get_companion_moments(companion_id, limit=limit)
-    return {"moments": moments, "total": len(moments)}
 
 
 @router.post("/api/moments/{moment_id}/comment")
@@ -130,7 +88,10 @@ async def api_add_comment(
 
 
 @router.post("/api/moments/{moment_id}/regenerate-image")
-async def api_regenerate_moment_image(moment_id: int,user_id: int = Depends(require_permissions(IsOwner))):
+async def api_regenerate_moment_image(
+    moment_id: int,
+    user_id: int = Depends(require_permissions(IsOwner)),
+):
     """根据朋友圈文案重新生成配图"""
     new_url = regenerate_moment_image(moment_id)
     if not new_url:
@@ -138,3 +99,28 @@ async def api_regenerate_moment_image(moment_id: int,user_id: int = Depends(requ
     return {"ok": True, "image_url": new_url}
 
 
+# GET {moment_id} 必须在所有 POST {moment_id}/xxx 之后
+@router.get("/api/moments/{moment_id}")
+async def api_get_moment_detail(
+    moment_id: int,
+    x_device_id: Optional[str] = Header(None),
+    user_id: int = Depends(require_permissions(IsOwner)),
+):
+    """获取单条朋友圈详情，包含评论"""
+    device_id = _get_device_id(x_device_id)
+    moment = get_moment_detail(moment_id, device_id=device_id)
+    if not moment:
+        raise HTTPException(status_code=404, detail="朋友圈不存在")
+    moment["comments"] = get_moment_comments(moment_id, limit=100)
+    return moment
+
+
+@router.get("/api/companions/{companion_id}/moments")
+async def api_companion_moments(
+    companion_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    user_id: int = Depends(require_permissions(IsOwner)),
+):
+    """获取某个伴侣的所有朋友圈"""
+    moments = get_companion_moments(companion_id, limit=limit)
+    return {"moments": moments, "total": len(moments)}
