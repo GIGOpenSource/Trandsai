@@ -51,7 +51,7 @@ def _get_cors_origins() -> list[str]:
             logger.info("CORS origins from env: %s", origins)
             return origins
     # 默认开发端口 + 常见生产建议（生产环境请通过环境变量覆盖，避免使用通配符*以保持安全）
-    defaults = ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:8000"]
+    defaults = ["https://www.trandsai.com","http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:8000"]
     logger.info("Using default CORS origins (set CORS_ORIGINS env for production): %s", defaults)
     return defaults
 
