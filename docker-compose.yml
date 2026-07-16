@@ -27,11 +27,9 @@ services:
     depends_on:
       - backend
 
-  # ========== 后端服务 ==========
+  # ========== 后端服务（直接使用持久化基础镜像 trandsai-base:v1） ==========
   backend:
-    build:
-      context: .
-      dockerfile: Dockerfile.base
+    image: trandsai-base:v1
     container_name: trandsai-backend
     restart: always
     networks:
