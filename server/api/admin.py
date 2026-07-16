@@ -138,7 +138,7 @@ async def admin_login(data: dict, lang: str = Depends(get_admin_lang)):
 
 @router.get("/api/admin/stats")
 async def admin_stats(_token: str = Depends(admin_auth_required)):
-    companions = get_companion_manager().list_all()
+    companions = get_companion_manager().list_all_for_admin()
     total_turns = sum(c["state"].get("turns", 0) for c in companions)
     avg_affection = sum(c["state"].get("affection", 0) for c in companions) / max(len(companions), 1)
     return {
@@ -151,7 +151,7 @@ async def admin_stats(_token: str = Depends(admin_auth_required)):
 
 @router.get("/api/admin/companions")
 async def admin_list_companions(_token: str = Depends(admin_auth_required)):
-    return get_companion_manager().list_all()
+    return get_companion_manager().list_all_for_admin()
 
 
 @router.delete("/api/admin/companions/{companion_id}")
