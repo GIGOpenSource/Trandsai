@@ -436,8 +436,8 @@ class CompanionManager:
             result.append(item)
         return result
 
-    def list_all_for_admin(self) -> List[Dict]:
-        """获取所有 companions 列表（管理员专用，不过滤用户）"""
+    def list_all_for_any(self) -> List[Dict]:
+        """获取所有 companions 列表（不过滤用户）"""
         result = []
         for c in self._companions.values():
             item = c.to_dict()

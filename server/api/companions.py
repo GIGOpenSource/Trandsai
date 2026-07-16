@@ -675,7 +675,7 @@ async def api_list_companions(
         user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
     """获取当前用户的 companions 列表"""
-    return get_companion_manager().list_all(user_id=user_id)
+    return get_companion_manager().list_all_for_any()
 
 
 @router.get("/companions/{companion_id}")

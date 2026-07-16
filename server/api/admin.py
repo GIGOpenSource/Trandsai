@@ -151,7 +151,7 @@ async def admin_stats(_token: str = Depends(admin_auth_required)):
 
 @router.get("/api/admin/companions")
 async def admin_list_companions(_token: str = Depends(admin_auth_required)):
-    return get_companion_manager().list_all_for_admin()
+    return get_companion_manager().list_all_for_any()
 
 
 @router.delete("/api/admin/companions/{companion_id}")
