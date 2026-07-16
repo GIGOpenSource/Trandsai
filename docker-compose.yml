@@ -1,16 +1,18 @@
 version: '3.8'
+
 networks:
   trand_net:
-
+    external: true
 
 services:
+  # ========== Nginx 服务 ==========
   nginx:
     image: nginx:1.27-alpine
     container_name: trandsai-nginx
     restart: always
     ports:
-      - "0.0.0.0:80:80"
-      - "0.0.0.0:443:443"
+      - "80:80"
+      - "443:443"
     networks:
       - trand_net
     volumes:
@@ -26,8 +28,11 @@ services:
       timeout: 5s
       retries: 3
 
+  # ========== 后端服务 ==========
   backend:
-    image: python:3.11-slim
+    build:
+      context: .
+      dockerfile: Dockerfile.base
     container_name: trandsai-backend
     restart: always
     networks:
@@ -37,9 +42,33 @@ services:
       - .:/project_root
       - ./data:/app/data
     working_dir: /app
-    command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+    env_file:
+      - .env
     environment:
       TZ: Asia/Shanghai
       DOTENV_PATH: /project_root/.env
+    depends_on:
+      - db
+
+  # ========== 数据库服务 ==========
+  db:
+    image: mysql:8.0
+    container_name: trandsai-db
+    restart: always
+    networks:
+      - trand_net
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-trandsai}
+      MYSQL_USER: ${MYSQL_USER:-trandsai}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-trandsai123}
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
