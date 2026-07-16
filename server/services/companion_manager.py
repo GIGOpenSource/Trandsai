@@ -397,6 +397,7 @@ class CompanionManager:
     def get(self, companion_id: str) -> Optional[Companion]:
         return self._companions.get(companion_id)
 
+
     def list_all(self, user_id: Optional[int] = None) -> List[Dict]:
         """获取 companions 列表。
         必须提供 user_id，只返回该用户拥有的 companions（created_by 匹配）。

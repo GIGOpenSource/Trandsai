@@ -104,7 +104,7 @@ async def api_regenerate_moment_image(
 async def api_get_moment_detail(
     moment_id: int,
     x_device_id: Optional[str] = Header(None),
-    user_id: int = Depends(require_permissions(IsOwner)),
+    user_id: int = Depends(require_permissions(IsAuthenticated)),
 ):
     """获取单条朋友圈详情，包含评论"""
     device_id = _get_device_id(x_device_id)
