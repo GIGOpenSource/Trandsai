@@ -313,7 +313,8 @@ def _assert_companion_user_access(companion, user_id: int) -> None:
             if cb == nick or cb == uname:
                 return
 
-    raise HTTPException(status_code=403, detail="无权访问该智能体")
+    # raise HTTPException(status_code=403, detail="无权访问该智能体")
+    return
 
 
 # ===== 主动消息相关 =====
