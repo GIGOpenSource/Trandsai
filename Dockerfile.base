@@ -4,7 +4,7 @@ WORKDIR /app
 
 # 预装依赖，构建基础镜像
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r req.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # 基础镜像标签
 LABEL maintainer="trandsai"
