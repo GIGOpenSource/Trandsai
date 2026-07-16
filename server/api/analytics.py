@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
@@ -10,6 +12,7 @@ class PageViewPayload(BaseModel):
     page_path: str
     page_name: str
     device_id: str
+    user_id: Optional[int] = None  # 新增：用户ID
     language: str = ""
 
 
@@ -18,6 +21,7 @@ class ButtonClickPayload(BaseModel):
     button_name: str
     page_path: str
     device_id: str
+    user_id: Optional[int] = None  # 新增：用户ID
     language: str = ""
 
 
@@ -27,7 +31,8 @@ async def track_page_view(data: PageViewPayload):
         db.add(PageViewORM(
             page_path=data.page_path,
             page_name=data.page_name,
-            device_id=data.device_id,
+            user_id=data.user_id,  # 保存 user_id
+            device_id=data.device_id,  # 保留 device_id
             language=data.language,
         ))
         db.commit()
@@ -41,7 +46,8 @@ async def track_button_click(data: ButtonClickPayload):
             button_id=data.button_id,
             button_name=data.button_name,
             page_path=data.page_path,
-            device_id=data.device_id,
+            user_id=data.user_id,  # 保存 user_id
+            device_id=data.device_id,  # 保留 device_id
             language=data.language,
         ))
         db.commit()
