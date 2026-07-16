@@ -1,10 +1,8 @@
-version: '3.8'
-
 networks:
   trand_net:
 
 services:
-  # ========== Nginx 服务 ==========
+  # Nginx 服务
   nginx:
     image: nginx:1.27-alpine
     container_name: trandsai-nginx
@@ -26,8 +24,10 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+    depends_on:
+      - backend
 
-  # ========== 后端服务 ==========
+  # 后端服务
   backend:
     build:
       context: .
@@ -50,7 +50,7 @@ services:
     depends_on:
       - db
 
-  # ========== 数据库服务 ==========
+  # MySQL数据库
   db:
     image: mysql:8.0
     container_name: trandsai-db
