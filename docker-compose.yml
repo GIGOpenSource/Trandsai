@@ -2,7 +2,6 @@ version: '3.8'
 
 networks:
   trand_net:
-    external: true
 
 services:
   # ========== Nginx 服务 ==========
