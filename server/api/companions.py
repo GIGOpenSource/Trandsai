@@ -299,8 +299,8 @@ def _assert_companion_user_access(companion, user_id: int) -> None:
     cb = (companion.profile.created_by or "").strip()
 
     # 必须有 created_by 且匹配当前用户
-    if not cb:
-        raise HTTPException(status_code=403, detail="无权访问该智能体")
+    # if not cb:
+    #     raise HTTPException(status_code=403, detail="无权访问该智能体")
 
     if cb == str(user_id):
         return
