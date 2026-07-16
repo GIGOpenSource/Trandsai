@@ -670,7 +670,7 @@ async def api_list_companions(
 async def api_list_companions(
         x_token: Optional[str] = Header(None, alias="x-token"),
         user_id: int = Depends(require_permissions(IsAuthenticated)),
-        filter_type: str = Query("all", regex="^(all|chatted|affectionate)$")
+        filter_type: str = Query("all", pattern="^(all|chatted|affectionate)$")
 ):
     """获取当前用户的 companions 列表
 
