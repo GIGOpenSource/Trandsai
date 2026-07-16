@@ -1,20 +1,52 @@
+<!doctype html>
+<html lang="en">
 
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>trandsai</title>
-      <link rel="icon" type="image/x-icon" href="./favicon.ico" />
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
-      <script type="module" crossorigin src="./assets/index-BXg-EDcm.js"></script>
-      <link rel="modulepreload" crossorigin href="./assets/vendor-i18n-CqXitz1J.js">
-      <link rel="modulepreload" crossorigin href="./assets/vendor-react-CTfWTpMw.js">
-      <link rel="stylesheet" crossorigin href="./assets/index-QXBcmymw.css">
-    </head>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="google-site-verification" content="aLsgjnUIEKzqz8X9pbnMKcmLhInlbca_0YQP_AlDXD0" />
+  <script>
+    // 在页面加载时立即应用主题，避免闪烁
+    (function() {
+      const savedTheme = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const isDark = savedTheme === 'dark' || (!savedTheme && prefersDark);
+      if (isDark) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+  <!-- 阿里云 A+ / aplus 埋点（单页应用：关闭自动 PV，由应用内路由订阅手动 sendPV） -->
+  <script>
+    (function (w, d, s, q, i) {
+      w[q] = w[q] || [];
+      var f = d.getElementsByTagName(s)[0],
+        j = d.createElement(s);
+      j.async = true;
+      j.id = 'beacon-aplus';
+      j.src = 'https://d.alicdn.com/alilog/mlog/aplus/' + i + '.js';
+      f.parentNode.insertBefore(j, f);
+    })(window, document, 'script', 'aplus_queue', '203467608');
 
-    <body>
-      <div id="root"></div>
-    </body>
-  </html>
-  
+    aplus_queue.push({
+      action: 'aplus.setMetaInfo',
+      arguments: ['appKey', '69ba004c6f259537c77be760'],
+    });
+    aplus_queue.push({
+      action: 'aplus.setMetaInfo',
+      arguments: ['aplus-waiting', 'MAN'],
+    });
+    aplus_queue.push({
+      action: 'aplus.setMetaInfo',
+      arguments: ['DEBUG', true],
+    });
+  </script>
+  <script type="module" src="./assets/index-ehdgKHSD.js"></script>
+  <link rel="stylesheet" href="./assets/index-D0-zWiFE.css">
+</head>
+
+<body>
+  <div id="root"></div>
+</body>
+
+</html>
