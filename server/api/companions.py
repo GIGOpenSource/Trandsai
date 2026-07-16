@@ -6,7 +6,7 @@ import random
 import re
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from langchain_core.messages import SystemMessage
 from starlette.websockets import WebSocketState
 from typing import List, Optional, Tuple
@@ -650,32 +650,37 @@ async def api_generate_persona(data: dict):
 
 
 @router.post("/companions")
-async def api_create_companion(
-        data: dict,
-        user_id: int = Depends(require_permissions(IsAuthenticated))
+async def api_list_companions(
+        x_token: Optional[str] = Header(None, alias="x-token"),
+        user_id: int = Depends(require_permissions(IsAuthenticated)),
+        filter_type: str = Query("all", pattern="^(all|chatted|affectionate)$")
 ):
-    """创建智能体，自动关联当前登录用户"""
-    try:
-        # 设置创建者
-        data["created_by"] = str(user_id)
+    """获取当前用户的 companions 列表
 
-        chat_history = data.pop("chat_history", None)
-        companion = get_companion_manager().create(data, chat_history=chat_history)
-        # 启动后台异步生成头像
-        if companion.profile.avatar_url == "__GENERATING__":
-            start_avatar_generation(companion.profile.id, companion.profile.model_dump())
-        return companion.to_dict()
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    Args:
+        filter_type: 过滤类型
+            - "all": 返回所有智能体（默认）
+            - "chatted": 返回有对话的智能体
+            - "affectionate": 返回有亲密度的智能体
+    """
+    return get_companion_manager().list_all_for_any(filter_type=filter_type)
 
 
 @router.get("/companions")
 async def api_list_companions(
         x_token: Optional[str] = Header(None, alias="x-token"),
-        user_id: int = Depends(require_permissions(IsAuthenticated))
+        user_id: int = Depends(require_permissions(IsAuthenticated)),
+        filter_type: str = Query("all", regex="^(all|chatted|affectionate)$")
 ):
-    """获取当前用户的 companions 列表"""
-    return get_companion_manager().list_all_for_any()
+    """获取当前用户的 companions 列表
+
+          Args:
+              filter_type: 过滤类型
+                  - "all": 返回所有智能体（默认）
+                  - "chatted": 返回有对话的智能体
+                  - "affectionate": 返回有亲密度的智能体
+          """
+    return get_companion_manager().list_all_for_any(filter_type=filter_type)
 
 
 @router.get("/companions/{companion_id}")
@@ -693,7 +698,7 @@ async def api_get_messages(
   companion_id: str,
   limit: int = 20,
   offset: int = 0,
-  user_id: int = Depends(require_permissions(IsOwner))
+  user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
   companion = get_companion_manager().get(companion_id)
   if not companion:
@@ -702,11 +707,11 @@ async def api_get_messages(
   return {"messages": messages, "total": companion.memory.short_term.get_total_count()}
 
 
-# 生成头像 - 需要是所有者
+# 生成头像
 @router.post("/companions/{companion_id}/generate-avatar")
 async def api_generate_avatar(
         companion_id: str,
-        user_id: int = Depends(require_permissions(IsOwner))
+        user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
     """基于人设 AI 生成动漫风格头像"""
     companion = get_companion_manager().get(companion_id)
@@ -725,7 +730,7 @@ async def api_generate_avatar(
 @router.delete("/companions/{companion_id}")
 async def api_delete_companion(
         companion_id: str,
-        user_id: int = Depends(require_permissions(IsOwner))
+        user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
     companion = get_companion_manager().get(companion_id)
     if not companion:
@@ -739,7 +744,7 @@ async def api_delete_companion(
 @router.post("/companions/{companion_id}/clear-messages")
 async def api_clear_messages(
         companion_id: str,
-        user_id: int = Depends(require_permissions(IsOwner))
+        user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
     """清空该智能体的聊天记录（短期记忆），并将亲密度归零"""
     companion = get_companion_manager().get(companion_id)

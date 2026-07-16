@@ -436,10 +436,27 @@ class CompanionManager:
             result.append(item)
         return result
 
-    def list_all_for_any(self) -> List[Dict]:
-        """获取所有 companions 列表（不过滤用户）"""
+    def list_all_for_any(self, filter_type: str = "all") -> List[Dict]:
+        """获取所有 companions 列表（不过滤用户）
+
+        Args:
+            filter_type: 过滤类型
+                - "all": 返回所有智能体（默认）
+                - "chatted": 返回有对话的智能体（turns > 0）
+                - "affectionate": 返回有亲密度的智能体（affection > 0）
+        """
         result = []
         for c in self._companions.values():
+            # 根据 filter_type 过滤
+            if filter_type == "chatted":
+                # 只返回有对话的智能体
+                if not c.state or c.state.turns <= 0:
+                    continue
+            elif filter_type == "affectionate":
+                # 只返回有亲密度的智能体
+                if not c.state or c.state.affection <= 0:
+                    continue
+
             item = c.to_dict()
             recent = c.memory.short_term.get_recent(1)
             if recent:
