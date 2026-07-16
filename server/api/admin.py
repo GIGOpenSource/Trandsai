@@ -1798,6 +1798,7 @@ async def admin_analytics(
     start_date: str = None,
     end_date: str = None,
     language: Optional[str] = None,
+    use_user_id: int = 1,  # 新增：是否使用 user_id 统计 UV（1=是，0=否）
     _token: str = Depends(admin_auth_required),
 ):
     start_dt = _parse_date(start_date)
@@ -1809,12 +1810,18 @@ async def admin_analytics(
 
     if page_views:
         with get_db() as db:
+            # 根据 use_user_id 参数决定使用 user_id 还是 device_id 统计 UV
+            if use_user_id:
+                uv_field = func.count(func.distinct(PageViewORM.user_id))
+            else:
+                uv_field = func.count(func.distinct(PageViewORM.device_id))
+
             query = db.query(
                 PageViewORM.page_path,
                 PageViewORM.page_name,
                 PageViewORM.language,
                 func.count(PageViewORM.id).label("pv_count"),
-                func.count(func.distinct(PageViewORM.device_id)).label("uv_count"),
+                uv_field.label("uv_count"),
             )
             if start_dt:
                 query = query.filter(PageViewORM.created_at >= start_dt)
@@ -1835,13 +1842,11 @@ async def admin_analytics(
             ]
             # 汇总
             total_pv = sum(r.pv_count for r in rows)
-            total_uv = len({r.page_path for r in rows}) if rows else 0
-            all_devices = set()
-            for r in rows:
-                # uv_count 是按 page_path 去重的，总UV需要重新查
-                pass
             # 重新查总UV
-            uv_query = db.query(func.count(func.distinct(PageViewORM.device_id)))
+            if use_user_id:
+                uv_query = db.query(func.count(func.distinct(PageViewORM.user_id)))
+            else:
+                uv_query = db.query(func.count(func.distinct(PageViewORM.device_id)))
             if start_dt:
                 uv_query = uv_query.filter(PageViewORM.created_at >= start_dt)
             if end_dt:
@@ -1853,13 +1858,19 @@ async def admin_analytics(
 
     if button_clicks:
         with get_db() as db:
+            # 根据 use_user_id 参数决定使用 user_id 还是 device_id 统计 UV
+            if use_user_id:
+                uv_field = func.count(func.distinct(ButtonClickORM.user_id))
+            else:
+                uv_field = func.count(func.distinct(ButtonClickORM.device_id))
+
             query = db.query(
                 ButtonClickORM.button_id,
                 ButtonClickORM.button_name,
                 ButtonClickORM.page_path,
                 ButtonClickORM.language,
                 func.count(ButtonClickORM.id).label("click_count"),
-                func.count(func.distinct(ButtonClickORM.device_id)).label("uv_count"),
+                uv_field.label("uv_count"),
             )
             if start_dt:
                 query = query.filter(ButtonClickORM.created_at >= start_dt)
@@ -1880,7 +1891,10 @@ async def admin_analytics(
                 for r in rows
             ]
             total_click = sum(r.click_count for r in rows)
-            uv_query = db.query(func.count(func.distinct(ButtonClickORM.device_id)))
+            if use_user_id:
+                uv_query = db.query(func.count(func.distinct(ButtonClickORM.user_id)))
+            else:
+                uv_query = db.query(func.count(func.distinct(ButtonClickORM.device_id)))
             if start_dt:
                 uv_query = uv_query.filter(ButtonClickORM.created_at >= start_dt)
             if end_dt:
@@ -1907,6 +1921,7 @@ async def admin_analytics_export(
     start_date: str = None,
     end_date: str = None,
     language: Optional[str] = None,
+    use_user_id: int = 1,  # 新增：是否使用 user_id 统计 UV
     _token: str = Depends(admin_auth_required),
 ):
     from openpyxl import Workbook
@@ -1945,12 +1960,18 @@ async def admin_analytics_export(
         _style_header(ws_pv, headers_pv)
 
         with get_db() as db:
+            # 根据 use_user_id 参数决定使用 user_id 还是 device_id 统计 UV
+            if use_user_id:
+                uv_field = func.count(func.distinct(PageViewORM.user_id))
+            else:
+                uv_field = func.count(func.distinct(PageViewORM.device_id))
+
             query = db.query(
                 PageViewORM.page_path,
                 PageViewORM.page_name,
                 PageViewORM.language,
                 func.count(PageViewORM.id).label("pv_count"),
-                func.count(func.distinct(PageViewORM.device_id)).label("uv_count"),
+                uv_field.label("uv_count"),
             )
             if start_dt:
                 query = query.filter(PageViewORM.created_at >= start_dt)
@@ -1977,13 +1998,19 @@ async def admin_analytics_export(
         _style_header(ws_bc, headers_bc)
 
         with get_db() as db:
+            # 根据 use_user_id 参数决定使用 user_id 还是 device_id 统计 UV
+            if use_user_id:
+                uv_field = func.count(func.distinct(ButtonClickORM.user_id))
+            else:
+                uv_field = func.count(func.distinct(ButtonClickORM.device_id))
+
             query = db.query(
                 ButtonClickORM.button_id,
                 ButtonClickORM.button_name,
                 ButtonClickORM.page_path,
                 ButtonClickORM.language,
                 func.count(ButtonClickORM.id).label("click_count"),
-                func.count(func.distinct(ButtonClickORM.device_id)).label("uv_count"),
+                uv_field.label("uv_count"),
             )
             if start_dt:
                 query = query.filter(ButtonClickORM.created_at >= start_dt)

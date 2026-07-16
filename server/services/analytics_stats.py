@@ -1,6 +1,6 @@
 """
-DAU / 留存：基于 page_views 与 button_clicks 中的 device_id。
-当日任意一次页面浏览或按钮点击即计为该设备当日活跃。
+DAU / 留存：基于 page_views 与 button_clicks 中的 user_id（优先）或 device_id。
+当日任意一次页面浏览或按钮点击即计为该用户当日活跃。
 """
 
 from __future__ import annotations
@@ -20,20 +20,47 @@ def _day_sql(col):
 
 
 def _load_activity_sets(db: Session, language: Optional[str]) -> Dict[str, Set[str]]:
-    """device_id -> 出现过行为的日期集合 (YYYY-MM-DD，SQLite strftime UTC 与存储一致)。"""
-    q_pv = db.query(PageViewORM.device_id, _day_sql(PageViewORM.created_at).label("day"))
-    q_bc = db.query(ButtonClickORM.device_id, _day_sql(ButtonClickORM.created_at).label("day"))
+    """user_id/device_id -> 出现过行为的日期集合 (YYYY-MM-DD，SQLite strftime UTC 与存储一致)。
+    优先使用 user_id，降级使用 device_id。
+    """
+    q_pv = db.query(
+        PageViewORM.user_id,
+        PageViewORM.device_id,
+        _day_sql(PageViewORM.created_at).label("day")
+    )
+    q_bc = db.query(
+        ButtonClickORM.user_id,
+        ButtonClickORM.device_id,
+        _day_sql(ButtonClickORM.created_at).label("day")
+    )
     if language:
         q_pv = q_pv.filter(PageViewORM.language == language)
         q_bc = q_bc.filter(ButtonClickORM.language == language)
 
     active: Dict[str, Set[str]] = defaultdict(set)
-    for device_id, day in q_pv.all():
-        if device_id and day:
-            active[device_id].add(day)
-    for device_id, day in q_bc.all():
-        if device_id and day:
-            active[device_id].add(day)
+
+    # 处理 page_views
+    for user_id, device_id, day in q_pv.all():
+        if user_id:
+            key = f"user_{user_id}"
+        elif device_id:
+            key = f"device_{device_id}"
+        else:
+            continue
+        if day:
+            active[key].add(day)
+
+    # 处理 button_clicks
+    for user_id, device_id, day in q_bc.all():
+        if user_id:
+            key = f"user_{user_id}"
+        elif device_id:
+            key = f"device_{device_id}"
+        else:
+            continue
+        if day:
+            active[key].add(day)
+
     return active
 
 

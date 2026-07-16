@@ -686,7 +686,7 @@ def _image_url_valid(image_url: Optional[str]) -> Optional[str]:
     return cleaned
 
 
-def get_moment_detail(moment_id: int, device_id: str = "") -> Optional[dict]:
+def get_moment_detail(moment_id: int, device_id: str = "", user_id: Optional[int] = None) -> Optional[dict]:
     """获取单条朋友圈详情，包含点赞状态"""
     with get_db() as db:
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
@@ -694,7 +694,15 @@ def get_moment_detail(moment_id: int, device_id: str = "") -> Optional[dict]:
             return None
 
         liked = False
-        if device_id:
+        # 优先使用 user_id 判断点赞状态，降级使用 device_id
+        if user_id:
+            existing = (
+                db.query(MomentLikeORM)
+                .filter_by(moment_id=moment_id, user_id=user_id)
+                .first()
+            )
+            liked = existing is not None
+        elif device_id:
             existing = (
                 db.query(MomentLikeORM)
                 .filter_by(moment_id=moment_id, device_id=device_id)
@@ -780,6 +788,7 @@ def get_moments_feed(
     limit: int = 20,
     offset: int = 0,
     device_id: str = "",
+    user_id: Optional[int] = None,
     lang: str = "",
     filter_lang: str = "",
     gender: str = "",
@@ -816,7 +825,18 @@ def get_moments_feed(
         #m.id 帖子id
         moment_ids = [m.id for m in moments]
         liked_ids = set()
-        if device_id:
+        # 优先使用 user_id 判断点赞状态，降级使用 device_id
+        if user_id:
+            likes = (
+                db.query(MomentLikeORM)
+                .filter(
+                    MomentLikeORM.moment_id.in_(moment_ids),
+                    MomentLikeORM.user_id == user_id,
+                )
+                .all()
+            )
+            liked_ids = {l.moment_id for l in likes}
+        elif device_id:
             likes = (
                 db.query(MomentLikeORM)
                 .filter(
@@ -867,14 +887,23 @@ def get_moments_feed(
         ]
 
 
-def toggle_like(moment_id: int, device_id: str) -> dict:
+def toggle_like(moment_id: int, device_id: str, user_id: Optional[int] = None) -> dict:
     """点赞或取消点赞"""
     with get_db() as db:
-        existing = (
-            db.query(MomentLikeORM)
-            .filter_by(moment_id=moment_id, device_id=device_id)
-            .first()
-        )
+        # 优先使用 user_id 查询，降级使用 device_id
+        if user_id:
+            existing = (
+                db.query(MomentLikeORM)
+                .filter_by(moment_id=moment_id, user_id=user_id)
+                .first()
+            )
+        else:
+            existing = (
+                db.query(MomentLikeORM)
+                .filter_by(moment_id=moment_id, device_id=device_id)
+                .first()
+            )
+
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
         if not moment:
             return {"ok": False, "error": "Moment not found"}
@@ -890,7 +919,11 @@ def toggle_like(moment_id: int, device_id: str) -> dict:
         else:
             # 点赞
             try:
-                db.add(MomentLikeORM(moment_id=moment_id, device_id=device_id))
+                db.add(MomentLikeORM(
+                    moment_id=moment_id,
+                    user_id=user_id,  # 保存 user_id
+                    device_id=device_id,  # 保留 device_id
+                ))
                 moment.likes_count = (moment.likes_count or 0) + 1
                 db.flush()
                 liked = True
@@ -1521,7 +1554,7 @@ def auto_generate_ai_comments(companion_manager) -> int:
     return created
 
 
-def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: int = None) -> dict:
+def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: int = None, user_id: Optional[int] = None) -> dict:
     """用户发表评论（或回复评论），并触发发帖 AI 的回复"""
     content = content.strip()
     if not content:
@@ -1529,10 +1562,18 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     if len(content) > 200:
         content = content[:200]
 
+    # 在 session 内提取所有需要的数据，避免 detached 对象问题
+    moment_companion_id = None
+    moment_caption = None
+
     with get_db() as db:
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
         if not moment:
             return {"ok": False, "error": "朋友圈不存在"}
+
+        # 提取 moment 数据到普通变量
+        moment_companion_id = moment.companion_id
+        moment_caption = moment.caption
 
         # 如果指定了 parent_id，验证该评论是否存在
         parent_comment = None
@@ -1544,7 +1585,8 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
         comment = MomentCommentORM(
             moment_id=moment_id,
             companion_id="",
-            user_device_id=device_id,
+            user_id=user_id,  # 保存 user_id
+            user_device_id=device_id,  # 保留 device_id
             parent_id=parent_id,
             content=content,
         )
@@ -1559,16 +1601,16 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     try:
         companion_manager = get_companion_manager()
         if companion_manager:
-            poster = companion_manager.get(moment.companion_id)
+            poster = companion_manager.get(moment_companion_id)
             if poster:
                 lang = _profile_lang(poster)
 
-                reply_text = generate_ai_reply_to_user(poster, moment.caption, content, lang)
+                reply_text = generate_ai_reply_to_user(poster, moment_caption, content, lang)
 
                 with get_db() as db:
                     reply = MomentCommentORM(
                         moment_id=moment_id,
-                        companion_id=moment.companion_id,
+                        companion_id=moment_companion_id,
                         parent_id=comment_id,
                         content=reply_text,
                     )
@@ -1580,7 +1622,7 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
                     ai_reply = {
                         "id": reply.id,
                         "is_user": False,
-                        "companion_id": moment.companion_id,
+                        "companion_id": moment_companion_id,
                         "companion_name": poster.profile.name,
                         "content": reply_text,
                         "created_at": serialize_datetime(reply.created_at),
@@ -1602,7 +1644,7 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     return result
 
 
-def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
+def get_moment_comments(moment_id: int, limit: int = 50, current_user_id: Optional[int] = None) -> List[dict]:
     """获取某条朋友圈的所有评论（包含 AI 评论和用户评论），支持回复关系"""
     with get_db() as db:
         comments = (
@@ -1619,11 +1661,26 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
             companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(ai_companion_ids)).all()
             companions_map = {c.id: c for c in companions_rows}
 
+        # 批量获取用户评论的用户信息
+        user_ids = list({c.user_id for c in comments if c.user_id})
+        users_map = {}
+        if user_ids:
+            users_rows = db.query(UserORM).filter(UserORM.id.in_(user_ids)).all()
+            users_map = {u.id: u for u in users_rows}
+
         # 构建评论ID到评论者名称的映射，用于回复关系
         comment_author_map = {}
         for c in comments:
-            if c.user_device_id:
-                comment_author_map[c.id] = "我"
+            if c.user_id:
+                user = users_map.get(c.user_id)
+                # 当前用户的评论显示"我"，其他用户的评论显示昵称
+                if current_user_id and c.user_id == current_user_id:
+                    comment_author_map[c.id] = "我"
+                else:
+                    comment_author_map[c.id] = user.nickname if user and user.nickname else (user.username if user else "匿名用户")
+            elif c.user_device_id:
+                # 兼容旧数据：没有 user_id 但有 user_device_id 的评论
+                comment_author_map[c.id] = "匿名用户"
             else:
                 companion = companions_map.get(c.companion_id)
                 comment_author_map[c.id] = companion.name if companion else "Unknown"
@@ -1634,13 +1691,23 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
             if c.parent_id:
                 reply_to_name = comment_author_map.get(c.parent_id)
 
-            if c.user_device_id:
+            if c.user_id or c.user_device_id:
                 # 用户评论
+                # 确定显示名称：当前用户显示"我"，其他用户显示昵称
+                if current_user_id and c.user_id == current_user_id:
+                    display_name = "我"
+                elif c.user_id:
+                    user = users_map.get(c.user_id)
+                    display_name = user.nickname if user and user.nickname else (user.username if user else "匿名用户")
+                else:
+                    display_name = "匿名用户"
+
                 result.append({
                     "id": c.id,
                     "is_user": True,
+                    "user_id": c.user_id,
                     "companion_id": None,
-                    "companion_name": "我",
+                    "companion_name": display_name,
                     "content": c.content,
                     "created_at": serialize_datetime(c.created_at),
                     "parent_id": c.parent_id,

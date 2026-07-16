@@ -182,11 +182,12 @@ class MomentLikeORM(Base):
     __tablename__ = "moment_likes"
     id = Column(Integer, primary_key=True, autoincrement=True)
     moment_id = Column(Integer, nullable=False, index=True)
-    device_id = Column(String(64), nullable=False)
-    # user_id = Column(Integer, nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # 用户ID，用于点赞去重
+    device_id = Column(String(64), nullable=False)  # 保留，为多设备区分预留
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     __table_args__ = (
         Index("uniq_moment_like", "moment_id", "device_id", unique=True),
+        Index("uniq_moment_like_user", "moment_id", "user_id", unique=True),
     )
 
 
@@ -195,7 +196,8 @@ class MomentCommentORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     moment_id = Column(Integer, nullable=False, index=True)
     companion_id = Column(String(8), nullable=True, index=True)
-    user_device_id = Column(String(64), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # 用户ID
+    user_device_id = Column(String(64), nullable=True, index=True)  # 保留，为多设备区分预留
     parent_id = Column(Integer, nullable=True, index=True)
     content = Column(Text)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -303,7 +305,8 @@ class PageViewORM(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     page_path = Column(String(200), nullable=False, index=True)
     page_name = Column(String(100), nullable=False, default="")
-    device_id = Column(String(64), nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # 用户ID
+    device_id = Column(String(64), nullable=False, index=True)  # 保留，为多设备区分预留
     language = Column(String(10), nullable=False, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -314,7 +317,8 @@ class ButtonClickORM(Base):
     button_id = Column(String(200), nullable=False, index=True)
     button_name = Column(String(100), nullable=False, default="")
     page_path = Column(String(200), nullable=False, default="", index=True)
-    device_id = Column(String(64), nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # 用户ID
+    device_id = Column(String(64), nullable=False, index=True)  # 保留，为多设备区分预留
     language = Column(String(10), nullable=False, default="")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -443,8 +447,14 @@ def init_db():
     _ensure_column("config_groups", "config_json", "TEXT DEFAULT '{}'")
     # 并发一致性：点赞去重唯一索引
     _ensure_unique_index("moment_likes", "uniq_moment_like", ["moment_id", "device_id"])
+    _ensure_unique_index("moment_likes", "uniq_moment_like_user", ["moment_id", "user_id"])
     _ensure_unique_index("post_likes", "uniq_post_like_user", ["post_id", "user_id"])
     _ensure_unique_index("post_likes", "uniq_post_like_device", ["post_id", "device_id"])
+    # 兼容：为已存在的表添加 user_id 字段
+    _ensure_column("moment_likes", "user_id", "INTEGER")
+    _ensure_column("moment_comments", "user_id", "INTEGER")
+    _ensure_column("page_views", "user_id", "INTEGER")
+    _ensure_column("button_clicks", "user_id", "INTEGER")
     # 兼容：admin_tokens 表（已存在表则跳过）
     from sqlalchemy import inspect
     inspector = inspect(engine)
