@@ -1,0 +1,1 @@
+function t(e){const n=typeof e=="number"?e:Number(e);if(!Number.isFinite(n))return"0";const r=Math.round(n*1e3)/1e3;return Number.isInteger(r)?String(r):r.toFixed(3).replace(/0+$/,"").replace(/\.$/,"")}export{t as f};
