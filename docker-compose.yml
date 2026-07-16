@@ -1,7 +1,8 @@
 version: '3.8'
 networks:
   trand_net:
-    external: true
+
+
 services:
   nginx:
     image: nginx:1.27-alpine
