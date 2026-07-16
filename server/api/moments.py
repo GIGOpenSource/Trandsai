@@ -90,7 +90,7 @@ async def api_add_comment(
 @router.post("/api/moments/{moment_id}/regenerate-image")
 async def api_regenerate_moment_image(
     moment_id: int,
-    user_id: int = Depends(require_permissions(IsOwner)),
+    user_id: int = Depends(require_permissions(IsAuthenticated)),
 ):
     """根据朋友圈文案重新生成配图"""
     new_url = regenerate_moment_image(moment_id)
@@ -119,7 +119,7 @@ async def api_get_moment_detail(
 async def api_companion_moments(
     companion_id: str,
     limit: int = Query(20, ge=1, le=100),
-    user_id: int = Depends(require_permissions(IsOwner)),
+    user_id: int = Depends(require_permissions(IsAuthenticated)),
 ):
     """获取某个伴侣的所有朋友圈"""
     moments = get_companion_moments(companion_id, limit=limit)
