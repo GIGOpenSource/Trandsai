@@ -486,7 +486,7 @@ Persyaratan:
 {restriction_text}"""
 
 
-async def _send_proactive_message(websocket: WebSocket, companion, lang: str, companion_id: str):
+async def _send_proactive_message(websocket: WebSocket, companion, lang: str, companion_id: str, user_short_term=None):
     """定时发送主动消息"""
     try:
         await asyncio.sleep(random.uniform(90, 180))
@@ -1097,7 +1097,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
 
             # AI 回复完成后，启动新的主动消息定时任务
             proactive_task = asyncio.create_task(
-                _send_proactive_message(websocket, companion, language, companion_id)
+                _send_proactive_message(websocket, companion, language, companion_id, user_short_term=user_short_term)
             )
 
     except WebSocketDisconnect:
