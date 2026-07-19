@@ -318,14 +318,18 @@ def _companion_city_str(companion) -> Optional[str]:
         return None
 
 
-def _build_proactive_prompt(companion, lang: str, time_context: str) -> str:
+def _build_proactive_prompt(companion, lang: str, time_context: str, user_short_term=None) -> str:
     """构建 AI 主动发消息的 prompt"""
     lang = normalize_ui_language(lang)
     system_text = build_system_prompt(companion.profile.model_dump(), lang, turns=companion.state.turns)
     name = companion.profile.name
     mood = companion.state.mood
     affection = companion.state.affection
-    recent = companion.memory.short_term.get_recent(6)
+    # 优先使用用户隔离的短期记忆
+    if user_short_term:
+        recent = user_short_term.get_recent(6)
+    else:
+        recent = companion.memory.short_term.get_recent(6)
     recent_text = "\n".join(
         f"{'他' if m['role'] == 'user' else name}：{m['content']}"
         for m in recent
@@ -503,7 +507,7 @@ async def _send_proactive_message(websocket: WebSocket, companion, lang: str, co
             tz_offset_minutes=sess.get("client_tz_offset"),
             companion_city=_companion_city_str(companion),
         )
-        prompt = _build_proactive_prompt(companion, lang, time_ctx)
+        prompt = _build_proactive_prompt(companion, lang, time_ctx, user_short_term=user_short_term)
         llm = get_llm()
         loop = asyncio.get_event_loop()
         resp = await loop.run_in_executor(None, lambda: llm.invoke([SystemMessage(content=prompt)]))
