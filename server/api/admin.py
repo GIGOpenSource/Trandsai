@@ -138,7 +138,7 @@ async def admin_login(data: dict, lang: str = Depends(get_admin_lang)):
 
 @router.get("/api/admin/stats")
 async def admin_stats(_token: str = Depends(admin_auth_required)):
-    companions = get_companion_manager().list_all_for_admin()
+    companions = get_companion_manager().list_all_for_any()
     total_turns = sum(c["state"].get("turns", 0) for c in companions)
     avg_affection = sum(c["state"].get("affection", 0) for c in companions) / max(len(companions), 1)
     return {
@@ -329,7 +329,7 @@ async def admin_batch_generate_moments(data: dict, _token: str = Depends(admin_a
 
     # 追加生成模式：不清空，为每个伴侣追加生成
     created = 0
-    companions = cm.list_all()
+    companions = cm.list_all_for_any()
     for c in companions:
         companion_id = c.get("profile", {}).get("id")
         if not companion_id:
