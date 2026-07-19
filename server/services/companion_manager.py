@@ -109,11 +109,12 @@ class CompanionState(BaseModel):
 
 
 class Companion:
-    def __init__(self, profile: CompanionProfile, memory_root: str, state: Optional[CompanionState] = None):
+    def __init__(self, profile: CompanionProfile, memory_root: str, state: Optional[CompanionState] = None, user_id: Optional[int] = None):
         self.profile = profile
         self.dir = os.path.join(memory_root, profile.id)
         os.makedirs(self.dir, exist_ok=True)
-        self.memory = CompanionMemory(profile.id, self.dir)
+        self.user_id = user_id
+        self.memory = CompanionMemory(profile.id, self.dir, user_id)
         self.state = state if state is not None else self._load_state()
 
     def _load_state(self) -> CompanionState:

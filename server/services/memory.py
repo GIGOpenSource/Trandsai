@@ -178,13 +178,15 @@ def get_embedding(text: str) -> Optional[List[float]]:
 class ShortTermMemory:
     """短期记忆：保留最近 15 轮原始对话（每轮含 user + assistant，最多 30 条消息）"""
 
-    def __init__(self, companion_id: str):
+    def __init__(self, companion_id: str, user_id: Optional[int] = None):
         self.companion_id = companion_id
+        self.user_id = user_id
 
     def add(self, role: str, content: str):
         with get_db() as db:
             db.add(ShortTermMessageORM(
                 companion_id=self.companion_id,
+                user_id=self.user_id,
                 role=role,
                 content=content,
             ))
@@ -192,30 +194,26 @@ class ShortTermMemory:
     def get_last_assistant_content(self) -> Optional[str]:
         """最近一条 AI 气泡的原文，用于发送前去重。"""
         with get_db() as db:
-            row = (
-                db.query(ShortTermMessageORM)
-                .filter(
-                    ShortTermMessageORM.companion_id == self.companion_id,
-                    ShortTermMessageORM.role == "assistant",
-                )
-                .order_by(desc(ShortTermMessageORM.id))
-                .limit(1)
-                .first()
+            query = db.query(ShortTermMessageORM).filter(
+                ShortTermMessageORM.companion_id == self.companion_id,
+                ShortTermMessageORM.role == "assistant",
             )
+            if self.user_id:
+                query = query.filter(ShortTermMessageORM.user_id == self.user_id)
+            row = query.order_by(desc(ShortTermMessageORM.id)).limit(1).first()
             if not row or not row.content:
                 return None
             return row.content
 
     def get_recent(self, n: int = 60, offset: int = 0) -> List[Dict]:
         with get_db() as db:
-            msgs = (
-                db.query(ShortTermMessageORM)
-                .filter(ShortTermMessageORM.companion_id == self.companion_id)
-                .order_by(desc(ShortTermMessageORM.id))
-                .offset(offset)
-                .limit(n)
-                .all()
+            query = db.query(ShortTermMessageORM).filter(
+                ShortTermMessageORM.companion_id == self.companion_id
             )
+            if self.user_id:
+                query = query.filter(ShortTermMessageORM.user_id == self.user_id)
+            msgs = query.order_by(desc(ShortTermMessageORM.id)).offset(offset).limit(n).all()
+
             def _fmt_ts(ts):
                 if not ts:
                     return datetime.now(timezone.utc).isoformat()
@@ -264,27 +262,32 @@ class ShortTermMemory:
 
     def get_turn_count(self) -> int:
         with get_db() as db:
-            count = (
-                db.query(ShortTermMessageORM)
-                .filter(ShortTermMessageORM.companion_id == self.companion_id)
-                .count()
+            query = db.query(ShortTermMessageORM).filter(
+                ShortTermMessageORM.companion_id == self.companion_id
             )
+            if self.user_id:
+                query = query.filter(ShortTermMessageORM.user_id == self.user_id)
+            count = query.count()
             return count // 2
 
     def get_total_count(self) -> int:
         """返回短期记忆的实际总记录数（含分段消息）"""
         with get_db() as db:
-            return (
-                db.query(ShortTermMessageORM)
-                .filter(ShortTermMessageORM.companion_id == self.companion_id)
-                .count()
+            query = db.query(ShortTermMessageORM).filter(
+                ShortTermMessageORM.companion_id == self.companion_id
             )
+            if self.user_id:
+                query = query.filter(ShortTermMessageORM.user_id == self.user_id)
+            return query.count()
 
     def clear(self):
         with get_db() as db:
-            db.query(ShortTermMessageORM).filter(
+            query = db.query(ShortTermMessageORM).filter(
                 ShortTermMessageORM.companion_id == self.companion_id
-            ).delete(synchronize_session=False)
+            )
+            if self.user_id:
+                query = query.filter(ShortTermMessageORM.user_id == self.user_id)
+            query.delete(synchronize_session=False)
 
 
 # ===== EpisodicMemory (Chroma 向量) =====
@@ -447,9 +450,10 @@ class RelationSummary:
 class CompanionMemory:
     """聚合所有记忆层，对外统一接口"""
 
-    def __init__(self, companion_id: str, companion_dir: str):
+    def __init__(self, companion_id: str, companion_dir: str, user_id: Optional[int] = None):
         self.companion_id = companion_id
-        self.short_term = ShortTermMemory(companion_id)
+        self.user_id = user_id
+        self.short_term = ShortTermMemory(companion_id, user_id)
         self.episodic = EpisodicMemory(companion_id, companion_dir)
         self.facts = FactMemory(companion_id)
         self.summary = RelationSummary(companion_id)

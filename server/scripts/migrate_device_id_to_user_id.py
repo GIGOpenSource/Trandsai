@@ -78,6 +78,19 @@ def migrate():
     else:
         print("[!] button_clicks table does not exist, skipping")
 
+    # 5. short_term_messages table (聊天记录按用户隔离)
+    if "short_term_messages" in inspector.get_table_names():
+        cols = [c["name"] for c in inspector.get_columns("short_term_messages")]
+        if "user_id" not in cols:
+            with engine.connect() as conn:
+                conn.execute(text("ALTER TABLE short_term_messages ADD COLUMN user_id INTEGER"))
+                conn.commit()
+            print("[OK] Added short_term_messages.user_id column")
+        else:
+            print("[SKIP] short_term_messages.user_id column already exists")
+    else:
+        print("[!] short_term_messages table does not exist, skipping")
+
     print("=" * 60)
     print("Migration completed!")
     print("=" * 60)

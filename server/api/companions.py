@@ -194,6 +194,7 @@ async def _deliver_assistant_content(
     message_queue: Optional[asyncio.Queue] = None,
     show_think_toasts: bool = False,
     delivery_mood: str = "neutral",
+    user_short_term=None,
 ) -> Tuple[List[str], bool]:
     """严格按 `_split_thinks_and_text` 的顺序下发：每条 think 可发 toast（由 show_think_toasts 控制频次），再处理紧随的正文块；
     正文块内先软换行再 split_response；分条节奏由 delivery_mood（激动/平静/普通）影响 max_chars 与条间是否打 typing、暂停长短。
@@ -277,7 +278,14 @@ async def _deliver_assistant_content(
                     return sent_segments, True
             stored = await _send_plain_assistant_bubble(websocket, companion, sub_clean)
             if stored:
-                companion.memory.add_assistant_message(stored)
+                if user_short_term:
+                    # 检查是否重复
+                    last = user_short_term.get_last_assistant_content()
+                    from services.memory import normalize_message_text_for_dedup
+                    if last is None or normalize_message_text_for_dedup(stored) != normalize_message_text_for_dedup(last):
+                        user_short_term.add("assistant", stored)
+                else:
+                    companion.memory.add_assistant_message(stored)
                 sent_segments.append(stored)
             bubble_idx += 1
 
@@ -515,6 +523,7 @@ async def _send_proactive_message(websocket: WebSocket, companion, lang: str, co
                 message_queue=None,
                 show_think_toasts=show_think,
                 delivery_mood="neutral",
+                user_short_term=user_short_term,
             )
         except Exception:
             return
@@ -687,8 +696,11 @@ async def api_get_messages(
   companion = get_companion_manager().get(companion_id)
   if not companion:
       raise HTTPException(status_code=404, detail="智能体不存在")
-  messages = companion.memory.short_term.get_recent(limit, offset)
-  return {"messages": messages, "total": companion.memory.short_term.get_total_count()}
+  # 只获取当前用户的聊天记录
+  from services.memory import ShortTermMemory
+  user_short_term = ShortTermMemory(companion_id, user_id)
+  messages = user_short_term.get_recent(limit, offset)
+  return {"messages": messages, "total": user_short_term.get_total_count()}
 
 
 # 生成头像
@@ -730,14 +742,24 @@ async def api_clear_messages(
         companion_id: str,
         user_id: int = Depends(require_permissions(IsAuthenticated))
 ):
-    """清空该智能体的聊天记录（短期记忆），并将亲密度归零"""
+    """清空当前用户与该智能体的聊天记录（短期记忆），并将亲密度归零"""
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    companion.memory.short_term.clear()
-    companion.state.affection = 0
-    companion.state.turns = 0
-    companion.save_state(user_id=user_id)
+    # 只清空当前用户的聊天记录
+    from services.memory import ShortTermMemory
+    user_short_term = ShortTermMemory(companion_id, user_id)
+    user_short_term.clear()
+    # 重置当前用户与该智能体的亲密度
+    from core.database import UserCompanionStateORM, get_db
+    with get_db() as db:
+        ucs = db.query(UserCompanionStateORM).filter(
+            UserCompanionStateORM.user_id == user_id,
+            UserCompanionStateORM.companion_id == companion_id
+        ).first()
+        if ucs:
+            ucs.affection = 0
+            ucs.turns = 0
     return {"ok": True}
 
 
@@ -790,6 +812,10 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
     session_meta.pop("last_disconnect", None)
     await set_session(companion_id, session_meta)
     user_lang = session_meta.get("lang") or "zh"
+
+    # 创建按用户隔离的短期记忆
+    from services.memory import ShortTermMemory
+    user_short_term = ShortTermMemory(companion_id, user_id)
 
     # 消息去重：记录最近收到的消息内容和时间戳
     _recent_user_messages: list[dict] = []
@@ -896,7 +922,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             # 这里简化处理：已发送的内容已经展示给用户，新的回复会覆盖话题
 
             for line in burst_parts:
-                companion.memory.add_user_message(line)
+                user_short_term.add("user", line)
 
             has_leave_intent = detect_leave_intent(combined_user_plain)
 
@@ -1018,6 +1044,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
                 message_queue=message_queue,
                 show_think_toasts=show_think,
                 delivery_mood=delivery_mood,
+                user_short_term=user_short_term,
             )
 
             if was_interrupted:

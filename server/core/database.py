@@ -106,6 +106,7 @@ class ShortTermMessageORM(Base):
     __tablename__ = "short_term_messages"
     id = Column(Integer, primary_key=True, autoincrement=True)
     companion_id = Column(String(8), nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)  # 用户ID，按用户隔离聊天记录
     role = Column(String(10), nullable=False)
     content = Column(Text)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -455,6 +456,7 @@ def init_db():
     _ensure_column("moment_comments", "user_id", "INTEGER")
     _ensure_column("page_views", "user_id", "INTEGER")
     _ensure_column("button_clicks", "user_id", "INTEGER")
+    _ensure_column("short_term_messages", "user_id", "INTEGER")
     # 兼容：admin_tokens 表（已存在表则跳过）
     from sqlalchemy import inspect
     inspector = inspect(engine)
