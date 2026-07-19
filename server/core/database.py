@@ -588,3 +588,15 @@ def serialize_datetime(dt):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+def serialize_datetime_beijing(dt):
+    """将 datetime 序列化为北京时间的 ISO 格式字符串（UTC+8）。"""
+    if dt is None:
+        return None
+    from datetime import timedelta
+    beijing_tz = timezone(timedelta(hours=8))
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt_beijing = dt.astimezone(beijing_tz)
+    return dt_beijing.isoformat()

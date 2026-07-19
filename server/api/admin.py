@@ -13,7 +13,7 @@ from sqlalchemy import desc, func, nullslast
 from api.auth import create_token, verify_token, clear_all_admin_tokens
 from core.config import BASE_DIR
 from api.auth import _hash_password as _hash
-from core.database import AgentConfigORM, ButtonClickORM, CompanionAgentConfigORM, CompanionORM, CompanionStateORM, ConfigGroupORM, FeedbackMessageORM, FeedbackThreadORM, MomentORM, PageViewORM, ShortTermMessageORM, SystemNotificationORM, UserCompanionStateORM, UserORM, get_db, serialize_datetime
+from core.database import AgentConfigORM, ButtonClickORM, CompanionAgentConfigORM, CompanionORM, CompanionStateORM, ConfigGroupORM, FeedbackMessageORM, FeedbackThreadORM, MomentORM, PageViewORM, ShortTermMessageORM, SystemNotificationORM, UserCompanionStateORM, UserORM, get_db, serialize_datetime, serialize_datetime_beijing
 from core.state import get_companion_manager
 from services.agent import test_llm_connection
 from services.analytics_stats import compute_dau_series, compute_retention_cohorts
@@ -1418,22 +1418,26 @@ async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_requi
     if not companion_id or not caption:
         raise HTTPException(status_code=400, detail=_get_error_msg("companion_id_caption_required", lang))
 
+    # 在同一个 session 内完成所有数据库操作，避免 detached 对象问题
     with get_db() as db:
         companion = db.query(CompanionORM).filter(CompanionORM.id == companion_id).first()
         if not companion:
             raise HTTPException(status_code=404, detail=_get_error_msg("companion_not_found", lang))
 
-    # 如果没有提供配图，先标记为生成中并启动后台异步任务
-    if not image_url:
-        image_url = "__GENERATING__"
+        # 提取 companion 数据到普通变量
+        companion_language = (companion.language or "").strip()
+        companion_city = (companion.city or "").strip()
 
-    caption_lang = (
-        (companion.language or "").strip()
-        or infer_language_from_city(companion.city or "")
-        or "zh"
-    )
+        # 如果没有提供配图，先标记为生成中并启动后台异步任务
+        if not image_url:
+            image_url = "__GENERATING__"
 
-    with get_db() as db:
+        caption_lang = (
+            companion_language
+            or infer_language_from_city(companion_city)
+            or "zh"
+        )
+
         moment = MomentORM(
             companion_id=companion_id,
             caption=caption,
@@ -1443,6 +1447,8 @@ async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_requi
         db.add(moment)
         db.flush()
         moment_id = moment.id
+        # 在 session 内提取 created_at
+        created_at = moment.created_at
 
     # 启动后台异步生成配图
     if image_url == "__GENERATING__":
@@ -1456,7 +1462,7 @@ async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_requi
         "image_generating": image_url == "__GENERATING__",
         "likes_count": 0,
         "comments_count": 0,
-        "created_at": moment.created_at.isoformat() if moment.created_at else None,
+        "created_at": serialize_datetime_beijing(created_at),
     }
 
 
@@ -1479,7 +1485,7 @@ async def admin_update_moment(moment_id: int, data: dict, _token: str = Depends(
             "image_url": moment.image_url,
             "likes_count": moment.likes_count,
             "comments_count": moment.comments_count,
-            "created_at": moment.created_at.isoformat() if moment.created_at else None,
+            "created_at": serialize_datetime_beijing(moment.created_at),
         }
 
 
