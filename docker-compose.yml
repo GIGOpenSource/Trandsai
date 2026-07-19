@@ -1,41 +1,47 @@
-version: '3.8'
 networks:
   trand_net:
-    external: true
+
 services:
+  # ========== Nginx 服务 ==========
   nginx:
     image: nginx:1.27-alpine
     container_name: trandsai-nginx
     restart: always
     ports:
-      - "0.0.0.0:8098:80"
+      - "80:80"
+      - "443:443"
     networks:
       - trand_net
     volumes:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf
-      - /www/project/Trandsai/client/dist:/usr/share/nginx/html/client:ro
-      - /www/project/Trandsai/admin/dist:/usr/share/nginx/html/admin:ro
-      - /www/project/Trandsai/data:/usr/share/nginx/html/data:ro
+      - ./page/frontend:/usr/share/nginx/html/frontend:ro
+      - ./page/admin:/usr/share/nginx/html/admin:ro
+      - ./page/file:/usr/share/nginx/html/file:ro
+      - ./page/cert:/etc/nginx/cert:ro
+      - ./data:/usr/share/nginx/html/data:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
       retries: 3
+    depends_on:
+      - backend
 
+  # ========== 后端服务（直接使用持久化基础镜像 trandsai-base:v1） ==========
   backend:
-    image: python:3.11-slim
+    image: trandsai-base:v1
     container_name: trandsai-backend
     restart: always
     networks:
       - trand_net
     volumes:
-      - /www/project/Trandsai/server:/app
-      - /www/project/Trandsai:/project_root
-      - /www/project/Trandsai/data:/app/data
+      - ./server:/app
+      - .:/project_root
+      - ./data:/app/data
     working_dir: /app
-    command: >
-      sh -c "pip install --no-cache-dir -r requirements.txt &&
-             uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1"
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1
+    env_file:
+      - .env
     environment:
       TZ: Asia/Shanghai
       DOTENV_PATH: /project_root/.env

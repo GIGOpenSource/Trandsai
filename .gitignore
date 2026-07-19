@@ -1,18 +1,12 @@
 # Dependencies
 client/
-admin/
-admin-legacy/
-client/node_modules/
-admin/node_modules/
 server/venv/
 venv/
 trand_venv/
 __pycache__/
 *.pyc
-
 # Build outputs
 client/dist/
-admin/dist/
 *.egg-info/
 
 # Environment & secrets1
@@ -60,11 +54,7 @@ server/scripts/data/images/
 canvases/
 tool/
 
-# 根目录配置与文档
-docker-compose.yml
+
 fix_agent.py
-nginx.conf
-package-lock.json
-req.txt
-requirements.txt
+
 *.md

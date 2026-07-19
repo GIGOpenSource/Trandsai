@@ -3,7 +3,7 @@ import os
 # 加载.env配置
 
 from fastapi import FastAPI
-from core.middleware import TokenAuthMiddleware
+
 from core.auth import init_redis
 import asyncio
 import logging
@@ -51,7 +51,7 @@ def _get_cors_origins() -> list[str]:
             logger.info("CORS origins from env: %s", origins)
             return origins
     # 默认开发端口 + 常见生产建议（生产环境请通过环境变量覆盖，避免使用通配符*以保持安全）
-    defaults = ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:8000"]
+    defaults = ["https://www.trandsai.com","http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://localhost:8000"]
     logger.info("Using default CORS origins (set CORS_ORIGINS env for production): %s", defaults)
     return defaults
 
@@ -232,7 +232,16 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="trandsai", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_get_cors_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=86400,
+)
 
+from core.middleware import TokenAuthMiddleware
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
@@ -253,13 +262,7 @@ async def generic_exception_handler(request: Request, exc: Exception):
     )
 
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_get_cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
 app.add_middleware(TokenAuthMiddleware)
 # 用户前端 SPA 静态资源（构建产物 dist/assets）
 if DIST_DIR.exists():

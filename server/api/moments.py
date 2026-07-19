@@ -1,4 +1,6 @@
 import asyncio
+import logging
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
@@ -36,40 +38,172 @@ def _get_user_id(x_token: Optional[str] = None) -> Optional[int]:
     except Exception:
         return None
 
+#
+# @router.get("/api/moments")
+# async def api_list_moments(
+#     limit: int = Query(20, ge=1, le=100),
+#     offset: int = Query(0, ge=0),
+#     lang: Optional[str] = Query(None),
+#     filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
+#     gender: Optional[str] = Query(None, description="男/女"),
+#     orientation: Optional[str] = Query(None, description="性取向"),
+#     x_device_id: Optional[str] = Header(None),
+#     x_token: Optional[str] = Header(None),
+# ):
+#
+#     """获取朋友圈列表，包含评论（公开接口，所有人都能看到所有人的朋友圈）"""
+#     device_id = _get_device_id(x_device_id)
+#     user_id = _get_user_id(x_token)
+#     moments = get_moments_feed(
+#         limit=limit,
+#         offset=offset,
+#         device_id=device_id,
+#         user_id=user_id,
+#         lang=lang or "",
+#         filter_lang=filter_lang or "",
+#         gender=gender or "",
+#         orientation=orientation or "",
+#     )
+#     for moment in moments:
+#         moment["comments"] = get_moment_comments(moment["id"], limit=10, current_user_id=user_id)
+#     total = count_moments_feed(
+#         filter_lang=filter_lang or "",
+#         gender=gender or "",
+#         orientation=orientation or "",
+#     )
+#     return {"moments": moments, "total": total}
+logger = logging.getLogger(__name__)
+
 
 @router.get("/api/moments")
 async def api_list_moments(
-    limit: int = Query(20, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    lang: Optional[str] = Query(None),
-    filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
-    gender: Optional[str] = Query(None, description="男/女"),
-    orientation: Optional[str] = Query(None, description="性取向"),
-    x_device_id: Optional[str] = Header(None),
-    x_token: Optional[str] = Header(None),
+        limit: int = Query(20, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+        lang: Optional[str] = Query(None),
+        filter_lang: Optional[str] = Query(None, description="按智能体资料语种筛选"),
+        gender: Optional[str] = Query(None, description="男/女"),
+        orientation: Optional[str] = Query(None, description="性取向"),
+        x_device_id: Optional[str] = Header(None),
+        x_token: Optional[str] = Header(None),
 ):
     """获取朋友圈列表，包含评论（公开接口，所有人都能看到所有人的朋友圈）"""
-    device_id = _get_device_id(x_device_id)
-    user_id = _get_user_id(x_token)
-    moments = get_moments_feed(
-        limit=limit,
-        offset=offset,
-        device_id=device_id,
-        user_id=user_id,
-        lang=lang or "",
-        filter_lang=filter_lang or "",
-        gender=gender or "",
-        orientation=orientation or "",
-    )
-    for moment in moments:
-        moment["comments"] = get_moment_comments(moment["id"], limit=10, current_user_id=user_id)
-    total = count_moments_feed(
-        filter_lang=filter_lang or "",
-        gender=gender or "",
-        orientation=orientation or "",
-    )
-    return {"moments": moments, "total": total}
 
+    # ============ 1. 详细的请求日志 ============
+    logger.info("=" * 60)
+    logger.info(f"📥 API Request: /api/moments")
+    logger.info(f"   Time: {datetime.now().isoformat()}")
+    logger.info(f"   Parameters:")
+    logger.info(f"     - limit: {limit} (type: {type(limit).__name__})")
+    logger.info(f"     - offset: {offset} (type: {type(offset).__name__})")
+    logger.info(f"     - lang: {lang} (type: {type(lang).__name__})")
+    logger.info(f"     - filter_lang: {filter_lang}")
+    logger.info(f"     - gender: {gender}")
+    logger.info(f"     - orientation: {orientation}")
+    logger.info(f"   Headers:")
+    logger.info(f"     - x_device_id: {x_device_id}")
+    logger.info(f"     - x_token: {'***' if x_token else 'None'}")
+
+    # ============ 2. 参数验证和转换 ============
+    # 确保 lang 参数有效
+    if lang is not None and lang == "":
+        lang = None
+        logger.warning("⚠️ lang参数为空字符串，已转为None")
+
+    # 验证 lang 是否在允许的值范围内（如果后端只支持特定语言）
+    allowed_langs = ["zh-CN", "en-US", "zh-TW", "ja-JP", "ko-KR"]  # 根据实际情况调整
+    if lang is not None and lang not in allowed_langs:
+        logger.warning(f"⚠️ lang='{lang}' 不在允许列表中: {allowed_langs}")
+        # 可以设置为默认值或保留原值
+        # lang = "zh-CN"  # 取消注释以强制使用默认值
+
+    # 验证 filter_lang
+    if filter_lang is not None and filter_lang == "":
+        filter_lang = None
+        logger.warning("⚠️ filter_lang参数为空字符串，已转为None")
+
+    if filter_lang is not None and filter_lang not in allowed_langs:
+        logger.warning(f"⚠️ filter_lang='{filter_lang}' 不在允许列表中: {allowed_langs}")
+
+    # ============ 3. 处理 device_id 和 user_id ============
+    try:
+        device_id = _get_device_id(x_device_id)
+        user_id = _get_user_id(x_token)
+        logger.info(f"   Device ID: {device_id}")
+        logger.info(f"   User ID: {user_id}")
+    except Exception as e:
+        logger.error(f"❌ Error getting device/user ID: {e}")
+        # 使用默认值继续
+        device_id = x_device_id or "unknown"
+        user_id = None
+
+    # ============ 4. 调用业务逻辑（包含异常捕获） ============
+    try:
+        logger.info("📊 Calling get_moments_feed...")
+        moments = get_moments_feed(
+            limit=limit,
+            offset=offset,
+            device_id=device_id,
+            user_id=user_id,
+            lang=lang or "",
+            filter_lang=filter_lang or "",
+            gender=gender or "",
+            orientation=orientation or "",
+        )
+        logger.info(f"   ✅ Retrieved {len(moments)} moments")
+
+        # 获取评论
+        logger.info("📊 Getting comments for moments...")
+        for idx, moment in enumerate(moments):
+            try:
+                moment["comments"] = get_moment_comments(
+                    moment["id"],
+                    limit=10,
+                    current_user_id=user_id
+                )
+                logger.debug(f"   Moment {idx + 1}: ID={moment['id']}, {len(moment['comments'])} comments")
+            except Exception as e:
+                logger.error(f"   ❌ Error getting comments for moment {moment.get('id')}: {e}")
+                moment["comments"] = []  # 设置默认值
+
+        # 获取总数
+        logger.info("📊 Counting total moments...")
+        total = count_moments_feed(
+            filter_lang=filter_lang or "",
+            gender=gender or "",
+            orientation=orientation or "",
+        )
+        logger.info(f"   ✅ Total: {total}")
+
+        response = {"moments": moments, "total": total}
+        logger.info(f"✅ Success: returning {len(moments)} items, total: {total}")
+        logger.info("=" * 60)
+        return response
+
+    except Exception as e:
+        # ============ 5. 详细错误处理 ============
+        logger.error(f"❌❌❌ ERROR in api_list_moments: {e}")
+        logger.error(f"   Error type: {type(e).__name__}")
+        logger.error(f"   Error args: {e.args}")
+        import traceback
+        logger.error(f"   Traceback:\n{traceback.format_exc()}")
+        logger.info("=" * 60)
+
+        # 返回详细的错误信息（开发环境）
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": str(e),
+                "type": type(e).__name__,
+                "params": {
+                    "limit": limit,
+                    "offset": offset,
+                    "lang": lang,
+                    "filter_lang": filter_lang,
+                    "gender": gender,
+                    "orientation": orientation
+                }
+            }
+        )
 
 # POST 路由必须在 GET {moment_id} 之前，避免路径冲突
 @router.post("/api/moments/{moment_id}/like")

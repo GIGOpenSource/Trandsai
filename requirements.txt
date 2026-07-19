@@ -66,6 +66,7 @@ overrides==7.7.0
 packaging==26.2
 pillow==12.2.0
 protobuf==6.33.6
+psycopg2-binary==2.9.12
 pybase64==1.4.3
 pydantic==2.13.3
 pydantic-settings==2.14.0
@@ -106,3 +107,4 @@ websockets==16.0
 xxhash==3.7.0
 zipp==3.23.1
 zstandard==0.25.0
+redis
