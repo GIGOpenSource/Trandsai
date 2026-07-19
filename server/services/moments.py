@@ -1137,7 +1137,7 @@ Persyaratan:
 def generate_ai_comment(commenter: Companion, poster: Companion, caption: str, lang: str = "zh") -> str:
     """调用 LLM 为 AI 伴侣生成一条朋友圈评论"""
     try:
-        llm = get_llm(temperature=0.9, max_tokens=60)
+        llm = get_llm(temperature=0.9)
         prompt = _build_comment_prompt(commenter, poster, caption, lang)
         resp = llm.invoke([("human", prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
@@ -1273,7 +1273,7 @@ Persyaratan:
 def generate_ai_reply_to_user(poster: Companion, caption: str, user_comment: str, lang: str = "zh") -> str:
     """调用 LLM 让发帖 AI 回复用户评论"""
     try:
-        llm = get_llm(temperature=0.9, max_tokens=80)
+        llm = get_llm(temperature=0.9)
         prompt = _build_reply_prompt(poster, caption, user_comment, lang)
         resp = llm.invoke([("human", prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
@@ -1409,7 +1409,7 @@ Persyaratan:
 def generate_ai_reply_to_ai(poster: Companion, caption: str, ai_comment: str, commenter_name: str, lang: str = "zh") -> str:
     """调用 LLM 让发帖 AI 回复其他 AI 的评论"""
     try:
-        llm = get_llm(temperature=0.9, max_tokens=80)
+        llm = get_llm(temperature=0.9)
         prompt = _build_reply_to_ai_prompt(poster, caption, ai_comment, commenter_name, lang)
         resp = llm.invoke([("human", prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()

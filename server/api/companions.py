@@ -295,32 +295,9 @@ async def require_login_user(
 
 
 def _assert_companion_user_access(companion, user_id: int) -> None:
-<<<<<<< HEAD
     """验证用户是否有权访问该 companion。所有登录用户都可以访问所有智能体。"""
     # 所有登录用户都可以访问所有智能体
     pass
-=======
-    """验证用户是否有权访问该 companion。只有 created_by 匹配当前用户才能访问。"""
-    cb = (companion.profile.created_by or "").strip()
-
-    # 必须有 created_by 且匹配当前用户
-    # if not cb:
-    #     raise HTTPException(status_code=403, detail="无权访问该智能体")
-
-    if cb == str(user_id):
-        return
-
-    with get_db() as db:
-        user = db.query(UserORM).filter(UserORM.id == user_id).first()
-        if user:
-            nick = (user.nickname or "").strip()
-            uname = (user.username or "").strip()
-            if cb == nick or cb == uname:
-                return
-
-    # raise HTTPException(status_code=403, detail="无权访问该智能体")
-    return
->>>>>>> 586ff53fe4bb0e0ea96fcbe5b765bfd2668d9a49
 
 
 # ===== 主动消息相关 =====
