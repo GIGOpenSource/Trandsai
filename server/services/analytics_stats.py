@@ -16,7 +16,8 @@ from core.database import ButtonClickORM, PageViewORM
 
 
 def _day_sql(col):
-    return func.strftime("%Y-%m-%d", col)
+    """将时间列转换为 YYYY-MM-DD 字符串（兼容 PostgreSQL）"""
+    return func.to_char(col, 'YYYY-MM-DD')
 
 
 def _load_activity_sets(db: Session, language: Optional[str]) -> Dict[str, Set[str]]:

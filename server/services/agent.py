@@ -52,7 +52,7 @@ def get_llm(
         if not api_key:
             raise RuntimeError("请设 변수 DEEPSEEK_API_KEY를 설정해주세요.")
         return ChatOpenAI(
-            model="deepseek-v4-flash",  # 对应你截图里的模型Code
+            model="qwen3.7-max-2026-05-17",  # 百炼模型
             temperature=temperature,
             max_tokens=max_tokens,
             api_key=api_key,
