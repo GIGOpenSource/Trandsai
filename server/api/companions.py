@@ -667,17 +667,19 @@ async def api_list_companions(
 async def api_list_companions(
         x_token: Optional[str] = Header(None, alias="x-token"),
         user_id: int = Depends(require_permissions(IsAuthenticated)),
-        filter_type: str = Query("all", pattern="^(all|chatted|affectionate)$")
+        filter_type: str = Query("all", pattern="^(all|chatted|affectionate|mine|mine_chatted)$")
 ):
     """获取当前用户的 companions 列表
 
           Args:
               filter_type: 过滤类型
                   - "all": 返回所有智能体（默认）
-                  - "chatted": 返回有对话的智能体
-                  - "affectionate": 返回有亲密度的智能体
+                  - "chatted": 返回有对话的智能体（turns > 0）
+                  - "affectionate": 返回亲密度 > 5 的智能体
+                  - "mine": 返回自己创建的智能体
+                  - "mine_chatted": 返回自己创建的 + 有对话的智能体
           """
-    return get_companion_manager().list_all_for_any(filter_type=filter_type)
+    return get_companion_manager().list_all_for_any(filter_type=filter_type, user_id=user_id)
 
 
 @router.get("/companions/{companion_id}")

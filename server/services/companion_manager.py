@@ -437,28 +437,55 @@ class CompanionManager:
             result.append(item)
         return result
 
-    def list_all_for_any(self, filter_type: str = "all") -> List[Dict]:
-        """获取所有 companions 列表（不过滤用户）
+    def list_all_for_any(self, filter_type: str = "all", user_id: Optional[int] = None) -> List[Dict]:
+        """获取所有 companions 列表
 
         Args:
             filter_type: 过滤类型
                 - "all": 返回所有智能体（默认）
                 - "chatted": 返回有对话的智能体（turns > 0）
-                - "affectionate": 返回有亲密度的智能体（affection > 0）
+                - "affectionate": 返回亲密度 > 5 的智能体
+                - "mine": 返回自己创建的智能体
+                - "mine_chatted": 返回自己创建的 + 有对话的智能体
+            user_id: 当前用户ID（用于判断是否是自己创建的）
         """
         result = []
+
+        # 获取当前用户信息（用于判断 created_by）
+        user_info = None
+        if user_id and filter_type in ("mine", "mine_chatted"):
+            user_info = self._get_user_info(user_id)
+
         for c in self._companions.values():
             # 根据 filter_type 过滤
             if filter_type == "chatted":
-                # 只返回有对话的智能体
-                if not c.state or c.state.turns <= 0:
-                    continue
+                # 只返回有对话的智能体（使用用户特定的 turns）
+                if user_id:
+                    user_turns = self._get_user_turns(c, user_id)
+                    if user_turns <= 0:
+                        continue
+                else:
+                    if not c.state or c.state.turns <= 0:
+                        continue
             elif filter_type == "affectionate":
-                # 只返回有亲密度的智能体
-                if not c.state or c.state.affection <= 0:
+                # 只返回用户亲密度 > 5 的智能体
+                if user_id:
+                    user_affection = self._get_user_affection(c, user_id)
+                    if user_affection <= 5:
+                        continue
+                else:
+                    if not c.state or c.state.affection <= 5:
+                        continue
+            elif filter_type == "mine":
+                # 只返回自己创建的智能体
+                if not self._is_my_companion(c, user_info):
+                    continue
+            elif filter_type == "mine_chatted":
+                # 只返回自己创建的智能体
+                if not self._is_my_companion(c, user_info):
                     continue
 
-            item = c.to_dict()
+            item = c.to_dict(user_id=user_id)
             recent = c.memory.short_term.get_recent(1)
             if recent:
                 last = recent[-1]
@@ -468,7 +495,89 @@ class CompanionManager:
                 item["last_message"] = ""
                 item["last_message_time"] = ""
             result.append(item)
+
+        # 排序逻辑
+        if filter_type == "mine_chatted":
+            result = self._sort_mine_chatted(result)
+        elif filter_type == "affectionate":
+            result.sort(key=lambda x: x.get("state", {}).get("affection", 0), reverse=True)
+
         return result
+
+    def _get_user_info(self, user_id: int) -> dict:
+        """获取用户信息（username, nickname）"""
+        with get_db() as db:
+            user = db.query(UserORM).filter(UserORM.id == user_id).first()
+            if user:
+                return {
+                    "user_id_str": str(user_id),
+                    "username": (user.username or "").strip(),
+                    "nickname": (user.nickname or "").strip()
+                }
+        return {}
+
+    def _get_user_affection(self, companion: Companion, user_id: int) -> float:
+        """获取用户对指定智能体的亲密度"""
+        with get_db() as db:
+            ur = (
+                db.query(UserCompanionStateORM)
+                .filter(
+                    UserCompanionStateORM.user_id == user_id,
+                    UserCompanionStateORM.companion_id == companion.profile.id,
+                )
+                .first()
+            )
+            if ur and ur.affection is not None:
+                return ur.affection
+        # 没有用户特定记录，返回全局亲密度
+        return companion.state.affection if companion.state else 0
+
+    def _get_user_turns(self, companion: Companion, user_id: int) -> int:
+        """获取用户与指定智能体的对话轮数"""
+        with get_db() as db:
+            ur = (
+                db.query(UserCompanionStateORM)
+                .filter(
+                    UserCompanionStateORM.user_id == user_id,
+                    UserCompanionStateORM.companion_id == companion.profile.id,
+                )
+                .first()
+            )
+            if ur and ur.turns is not None:
+                return ur.turns
+        # 没有用户特定记录，返回全局轮数
+        return companion.state.turns if companion.state else 0
+
+    def _is_my_companion(self, companion: Companion, user_info: dict) -> bool:
+        """判断是否是当前用户创建的智能体"""
+        if not user_info:
+            return False
+
+        created_by = (companion.profile.created_by or "").strip()
+        return (
+            created_by == user_info["user_id_str"] or
+            created_by == user_info["username"] or
+            created_by == user_info["nickname"]
+        )
+
+    def _sort_mine_chatted(self, items: List[Dict]) -> List[Dict]:
+        """排序：自己创建的无对话排前面，有对话的按最后消息时间降序"""
+        no_chat = []
+        has_chat = []
+
+        for item in items:
+            if item.get("last_message_time"):
+                has_chat.append(item)
+            else:
+                no_chat.append(item)
+
+        # 无对话的按创建时间降序（新建的排前面）
+        no_chat.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+
+        # 有对话的按最后消息时间降序（常用的排前面）
+        has_chat.sort(key=lambda x: x.get("last_message_time", ""), reverse=True)
+
+        return no_chat + has_chat
 
     def update(self, companion_id: str, data: dict) -> Optional[Companion]:
         companion = self._companions.get(companion_id)
