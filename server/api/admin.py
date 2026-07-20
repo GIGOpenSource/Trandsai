@@ -1812,7 +1812,7 @@ async def admin_analytics(
     start_date: str = None,
     end_date: str = None,
     language: Optional[str] = None,
-    use_user_id: int = 1,  # 新增：是否使用 user_id 统计 UV（1=是，0=否）
+    use_user_id: int = 0,  # 默认使用 device_id 统计 UV（客户端埋点未传 user_id）
     _token: str = Depends(admin_auth_required),
 ):
     start_dt = _parse_date(start_date)
