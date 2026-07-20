@@ -231,7 +231,7 @@ async def admin_list_moments(limit: int = 50, offset: int = 0, lang: Optional[st
     from services.moments import get_moments_feed
     # 传递 lang 参数，确保管理端列表本地化与用户端一致（修复之前未传 lang 的问题）
     effective_lang = lang or "zh"
-    moments = get_moments_feed(limit=limit, offset=offset, device_id="", lang=effective_lang)
+    moments = get_moments_feed(limit=limit, offset=offset, lang=effective_lang)
     with get_db() as db:
         total = db.query(func.count(MomentORM.id)).scalar() or 0
     return {"moments": moments, "total": total}
