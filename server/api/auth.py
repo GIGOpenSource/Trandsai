@@ -300,21 +300,11 @@ async def user_stats(x_token: Optional[str] = Header(None)):
 
     from datetime import datetime, timezone
 
-    user_id_str = str(user_id)
-
     with get_db() as db:
-        # 获取当前用户信息
-        user = db.query(UserORM).filter(UserORM.id == user_id).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="用户不存在")
-
-        # 获取用户拥有的 companions（通过 created_by 匹配）
-        all_companions = db.query(CompanionORM).all()
-        user_companions = []
-        for c in all_companions:
-            cb = (c.created_by or "").strip()
-            if cb == user_id_str:
-                user_companions.append(c)
+        # 获取当前用户与所有智能体的亲密度关系
+        user_states = db.query(UserCompanionStateORM).filter(
+            UserCompanionStateORM.user_id == user_id
+        ).all()
 
         # 统计亲密度>5的伴侣数、总对话轮数、陪伴最久天数
         intimate_companion_count = 0
@@ -322,23 +312,21 @@ async def user_stats(x_token: Optional[str] = Header(None)):
         max_days_together = 0
         now = datetime.now(timezone.utc)
 
-        for c in user_companions:
-            user_state = db.query(UserCompanionStateORM).filter(
-                UserCompanionStateORM.user_id == user_id,
-                UserCompanionStateORM.companion_id == c.id
-            ).first()
-
-            affection = user_state.affection if user_state else 0
-            turns = user_state.turns if user_state else 0
+        for state in user_states:
+            affection = state.affection or 0
+            turns = state.turns or 0
 
             # 亲密度>5的伴侣
-            if affection and affection > 5:
+            if affection > 5:
                 intimate_companion_count += 1
                 total_turns += turns
 
-                # 计算陪伴天数
-                if c.created_at:
-                    ct = c.created_at
+                # 获取智能体的创建时间来计算陪伴天数
+                companion = db.query(CompanionORM).filter(
+                    CompanionORM.id == state.companion_id
+                ).first()
+                if companion and companion.created_at:
+                    ct = companion.created_at
                     if ct.tzinfo is None:
                         ct = ct.replace(tzinfo=timezone.utc)
                     days = (now - ct).days
