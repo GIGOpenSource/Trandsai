@@ -138,9 +138,17 @@ async def admin_login(data: dict, lang: str = Depends(get_admin_lang)):
 
 @router.get("/api/admin/stats")
 async def admin_stats(_token: str = Depends(admin_auth_required)):
+    from core.database import UserCompanionStateORM
+
     companions = get_companion_manager().list_all_for_any()
-    total_turns = sum(c["state"].get("turns", 0) for c in companions)
-    avg_affection = sum(c["state"].get("affection", 0) for c in companions) / max(len(companions), 1)
+
+    # 从用户特定状态表中聚合数据（而不是使用全局状态）
+    with get_db() as db:
+        user_states = db.query(UserCompanionStateORM).all()
+        total_turns = sum(s.turns or 0 for s in user_states)
+        total_affection = sum(s.affection or 0 for s in user_states)
+        avg_affection = total_affection / max(len(user_states), 1) if user_states else 0
+
     return {
         "companion_count": len(companions),
         "total_turns": total_turns,
