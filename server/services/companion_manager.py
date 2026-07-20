@@ -420,13 +420,15 @@ class CompanionManager:
         for c in self._companions.values():
             # 根据 filter_type 过滤
             if filter_type == "chatted":
-                # 只返回有对话的智能体（使用用户特定的 turns）
+                # 只返回有消息记录的智能体（检查短期记忆，而不是 turns）
                 if user_id:
-                    user_turns = self._get_user_turns(c, user_id)
-                    if user_turns <= 0:
+                    user_short_term = ShortTermMemory(c.profile.id, user_id)
+                    recent = user_short_term.get_recent(1)
+                    if not recent:
                         continue
                 else:
-                    if not c.state or c.state.turns <= 0:
+                    recent = c.memory.short_term.get_recent(1)
+                    if not recent:
                         continue
             elif filter_type == "affectionate":
                 # 只返回用户亲密度 > 5 的智能体

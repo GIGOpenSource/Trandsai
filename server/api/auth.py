@@ -293,7 +293,7 @@ def clear_all_admin_tokens():
 
 @router.get("/api/users/stats")
 async def user_stats(x_token: Optional[str] = Header(None)):
-    """获取当前用户的统计数据（伴侣数、总对话轮数、陪伴天数）"""
+    """获取当前用户的统计数据（亲密度>5的伴侣数、总对话轮数、陪伴最久天数）"""
     user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
         raise HTTPException(status_code=401, detail="请先登录")
@@ -309,9 +309,6 @@ async def user_stats(x_token: Optional[str] = Header(None)):
             raise HTTPException(status_code=404, detail="用户不存在")
 
         # 获取用户拥有的 companions（通过 created_by 匹配）
-        username = (user.username or "").strip()
-        nickname = (user.nickname or "").strip()
-
         all_companions = db.query(CompanionORM).all()
         user_companions = []
         for c in all_companions:
@@ -319,35 +316,37 @@ async def user_stats(x_token: Optional[str] = Header(None)):
             if cb == user_id_str:
                 user_companions.append(c)
 
-        companion_count = len(user_companions)
-
-        # 统计用户 companions 的总对话轮数（从用户特定状态表获取）
+        # 统计亲密度>5的伴侣数、总对话轮数、陪伴最久天数
+        intimate_companion_count = 0
         total_turns = 0
+        max_days_together = 0
+        now = datetime.now(timezone.utc)
+
         for c in user_companions:
             user_state = db.query(UserCompanionStateORM).filter(
                 UserCompanionStateORM.user_id == user_id,
                 UserCompanionStateORM.companion_id == c.id
             ).first()
-            if user_state:
-                total_turns += user_state.turns or 0
 
-        # 陪伴天数：从用户最早创建的伴侣算起
-        days_together = 0
-        if user_companions:
-            now = datetime.now(timezone.utc)
-            earliest = None
-            for c in user_companions:
+            affection = user_state.affection if user_state else 0
+            turns = user_state.turns if user_state else 0
+
+            # 亲密度>5的伴侣
+            if affection and affection > 5:
+                intimate_companion_count += 1
+                total_turns += turns
+
+                # 计算陪伴天数
                 if c.created_at:
                     ct = c.created_at
                     if ct.tzinfo is None:
                         ct = ct.replace(tzinfo=timezone.utc)
-                    if earliest is None or ct < earliest:
-                        earliest = ct
-            if earliest:
-                days_together = (now - earliest).days
+                    days = (now - ct).days
+                    if days > max_days_together:
+                        max_days_together = days
 
     return {
-        "companion_count": companion_count,
+        "intimate_companion_count": intimate_companion_count,
         "total_turns": total_turns,
-        "days_together": days_together,
+        "max_days_together": max_days_together,
     }

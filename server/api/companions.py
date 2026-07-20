@@ -683,7 +683,7 @@ async def api_list_companions(
               filter_type: 过滤类型
                   - "all": 返回所有智能体（默认）
                   - "chatted": 返回有对话的智能体（turns > 0）
-                  - "affectionate": 返回亲密度 > 5 的智能体
+                  - "affectionate": 返回亲密度 > 5 的智能体/
                   - "mine": 返回自己创建的智能体
                   - "mine_chatted": 返回自己创建的 + 有对话的智能体
           """
