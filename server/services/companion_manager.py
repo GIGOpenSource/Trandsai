@@ -301,50 +301,7 @@ class CompanionManager:
             )
             profile.language = inferred
 
-        # 内存中去重（名称+城市）
-        for c in self._companions.values():
-            if c.profile.name == profile.name and c.profile.city == profile.city:
-                return c
-
         with get_db() as db:
-            # 数据库中去重：id 或 name+city 已存在则返回已有记录
-            existing = db.query(CompanionORM).filter(
-                (CompanionORM.id == profile.id) |
-                ((CompanionORM.name == profile.name) & (CompanionORM.city == profile.city))
-            ).first()
-            if existing:
-                # 如果内存中没有但 DB 中有，重新加载到内存
-                if existing.id not in self._companions:
-                    self._load_all()
-                return self._companions.get(existing.id) or Companion(
-                    CompanionProfile(
-                        id=existing.id,
-                        name=existing.name,
-                        age=existing.age or 18,
-                        gender=existing.gender or "女",
-                        city=existing.city or "未知",
-                        personality=existing.personality or "温柔体贴",
-                        background=existing.background or "",
-                        speech_style=existing.speech_style or "",
-                        hobbies=existing.hobbies or "",
-                        values=existing.values or "",
-                        fears=existing.fears or "",
-                        love_view=existing.love_view or "",
-                        daily_routine=existing.daily_routine or "",
-                        favorite_things=existing.favorite_things or "",
-                        mbti=existing.mbti or "",
-                        sexual_orientation=existing.sexual_orientation or "",
-                        life_story=existing.life_story or "",
-                        cultural_values=existing.cultural_values or "",
-                        gender_perspective=existing.gender_perspective or "",
-                        avatar_url=existing.avatar_url or "",
-                        created_by=existing.created_by or "",
-                        language=existing.language or "zh",
-                        created_at=existing.created_at.isoformat() if existing.created_at else datetime.now(timezone.utc).isoformat(),
-                    ),
-                    self.memory_root,
-                )
-
             db.add(CompanionORM(
                 id=profile.id,
                 name=profile.name,
