@@ -686,7 +686,7 @@ def _image_url_valid(image_url: Optional[str]) -> Optional[str]:
     return cleaned
 
 
-def get_moment_detail(moment_id: int, device_id: str = "", user_id: Optional[int] = None) -> Optional[dict]:
+def get_moment_detail(moment_id: int, user_id: Optional[int] = None) -> Optional[dict]:
     """获取单条朋友圈详情，包含点赞状态"""
     with get_db() as db:
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
@@ -694,18 +694,11 @@ def get_moment_detail(moment_id: int, device_id: str = "", user_id: Optional[int
             return None
 
         liked = False
-        # 优先使用 user_id 判断点赞状态，降级使用 device_id
+        # 只使用 user_id 判断点赞状态
         if user_id:
             existing = (
                 db.query(MomentLikeORM)
                 .filter_by(moment_id=moment_id, user_id=user_id)
-                .first()
-            )
-            liked = existing is not None
-        elif device_id:
-            existing = (
-                db.query(MomentLikeORM)
-                .filter_by(moment_id=moment_id, device_id=device_id)
                 .first()
             )
             liked = existing is not None
@@ -787,7 +780,6 @@ def count_moments_feed(
 def get_moments_feed(
     limit: int = 20,
     offset: int = 0,
-    device_id: str = "",
     user_id: Optional[int] = None,
     lang: str = "",
     filter_lang: str = "",
@@ -825,23 +817,13 @@ def get_moments_feed(
         #m.id 帖子id
         moment_ids = [m.id for m in moments]
         liked_ids = set()
-        # 优先使用 user_id 判断点赞状态，降级使用 device_id
+        # 只使用 user_id 判断点赞状态，未登录则不显示点赞状态
         if user_id:
             likes = (
                 db.query(MomentLikeORM)
                 .filter(
                     MomentLikeORM.moment_id.in_(moment_ids),
                     MomentLikeORM.user_id == user_id,
-                )
-                .all()
-            )
-            liked_ids = {l.moment_id for l in likes}
-        elif device_id:
-            likes = (
-                db.query(MomentLikeORM)
-                .filter(
-                    MomentLikeORM.moment_id.in_(moment_ids),
-                    MomentLikeORM.device_id == device_id,
                 )
                 .all()
             )
@@ -887,22 +869,18 @@ def get_moments_feed(
         ]
 
 
-def toggle_like(moment_id: int, device_id: str, user_id: Optional[int] = None) -> dict:
-    """点赞或取消点赞"""
+def toggle_like(moment_id: int, user_id: int) -> dict:
+    """点赞或取消点赞 - 要求必须登录"""
+    if not user_id:
+        return {"ok": False, "error": "请先登录"}
+
     with get_db() as db:
-        # 优先使用 user_id 查询，降级使用 device_id
-        if user_id:
-            existing = (
-                db.query(MomentLikeORM)
-                .filter_by(moment_id=moment_id, user_id=user_id)
-                .first()
-            )
-        else:
-            existing = (
-                db.query(MomentLikeORM)
-                .filter_by(moment_id=moment_id, device_id=device_id)
-                .first()
-            )
+        # 只使用 user_id 查询
+        existing = (
+            db.query(MomentLikeORM)
+            .filter_by(moment_id=moment_id, user_id=user_id)
+            .first()
+        )
 
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
         if not moment:
@@ -921,8 +899,8 @@ def toggle_like(moment_id: int, device_id: str, user_id: Optional[int] = None) -
             try:
                 db.add(MomentLikeORM(
                     moment_id=moment_id,
-                    user_id=user_id,  # 保存 user_id
-                    device_id=device_id,  # 保留 device_id
+                    user_id=user_id,
+                    device_id="legacy",  # 标记为旧数据兼容
                 ))
                 moment.likes_count = (moment.likes_count or 0) + 1
                 db.flush()
