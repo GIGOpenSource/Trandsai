@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
-from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserORM, get_db
+from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserCompanionStateORM, UserORM, get_db
 from core.auth import generate_token, delete_token, verify_token as redis_verify_token
 router = APIRouter()
 
@@ -321,12 +321,15 @@ async def user_stats(x_token: Optional[str] = Header(None)):
 
         companion_count = len(user_companions)
 
-        # 统计用户 companions 的总对话轮数
+        # 统计用户 companions 的总对话轮数（从用户特定状态表获取）
         total_turns = 0
         for c in user_companions:
-            state = db.query(CompanionStateORM).filter(CompanionStateORM.companion_id == c.id).first()
-            if state:
-                total_turns += state.turns or 0
+            user_state = db.query(UserCompanionStateORM).filter(
+                UserCompanionStateORM.user_id == user_id,
+                UserCompanionStateORM.companion_id == c.id
+            ).first()
+            if user_state:
+                total_turns += user_state.turns or 0
 
         # 陪伴天数：从用户最早创建的伴侣算起
         days_together = 0
@@ -341,7 +344,7 @@ async def user_stats(x_token: Optional[str] = Header(None)):
                     if earliest is None or ct < earliest:
                         earliest = ct
             if earliest:
-                days_together =(now - earliest).days
+                days_together = (now - earliest).days
 
     return {
         "companion_count": companion_count,
