@@ -21,7 +21,7 @@ from core.database import (
     get_db, UserORM,
 )
 from services.image_generation import generate_avatar_prompt, generate_image
-from services.memory import CompanionMemory
+from services.memory import CompanionMemory, ShortTermMemory
 from services.culture_data import infer_language_from_city
 
 logger = logging.getLogger(__name__)
@@ -426,7 +426,11 @@ class CompanionManager:
                 continue  # 不属于该用户，跳过
 
             item = c.to_dict(user_id=user_id)
-            recent = c.memory.short_term.get_recent(1)
+
+            # 使用用户特定的短期记忆获取最近消息
+            user_short_term = ShortTermMemory(c.profile.id, user_id)
+            recent = user_short_term.get_recent(1)
+
             if recent:
                 last = recent[-1]
                 item["last_message"] = last["content"]
@@ -486,7 +490,14 @@ class CompanionManager:
                     continue
 
             item = c.to_dict(user_id=user_id)
-            recent = c.memory.short_term.get_recent(1)
+
+            # 使用用户特定的短期记忆获取最近消息
+            if user_id:
+                user_short_term = ShortTermMemory(c.profile.id, user_id)
+                recent = user_short_term.get_recent(1)
+            else:
+                recent = c.memory.short_term.get_recent(1)
+
             if recent:
                 last = recent[-1]
                 item["last_message"] = last["content"]
