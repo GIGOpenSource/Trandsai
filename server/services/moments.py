@@ -900,7 +900,7 @@ def toggle_like(moment_id: int, user_id: int) -> dict:
                 db.add(MomentLikeORM(
                     moment_id=moment_id,
                     user_id=user_id,
-                    device_id="legacy",  # 标记为旧数据兼容
+                    device_id="",
                 ))
                 moment.likes_count = (moment.likes_count or 0) + 1
                 db.flush()

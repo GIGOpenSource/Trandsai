@@ -187,7 +187,6 @@ class MomentLikeORM(Base):
     device_id = Column(String(64), nullable=False)  # 保留，为多设备区分预留
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     __table_args__ = (
-        Index("uniq_moment_like", "moment_id", "device_id", unique=True),
         Index("uniq_moment_like_user", "moment_id", "user_id", unique=True),
     )
 
@@ -446,8 +445,7 @@ def init_db():
     # 兼容：config_groups 表新增 config_type 和 config_json 字段
     _ensure_column("config_groups", "config_type", "VARCHAR(20) DEFAULT 'agent'")
     _ensure_column("config_groups", "config_json", "TEXT DEFAULT '{}'")
-    # 并发一致性：点赞去重唯一索引
-    _ensure_unique_index("moment_likes", "uniq_moment_like", ["moment_id", "device_id"])
+    # 并发一致性：点赞去重唯一索引（只保留 user_id 索引）
     _ensure_unique_index("moment_likes", "uniq_moment_like_user", ["moment_id", "user_id"])
     _ensure_unique_index("post_likes", "uniq_post_like_user", ["post_id", "user_id"])
     _ensure_unique_index("post_likes", "uniq_post_like_device", ["post_id", "device_id"])
