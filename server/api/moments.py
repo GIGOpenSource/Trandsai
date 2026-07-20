@@ -109,7 +109,10 @@ async def api_list_moments(
 
     # 验证 lang 是否在允许的值范围内（如果后端只支持特定语言）
     allowed_langs = ["zh-CN", "en-US", "zh-TW", "ja-JP", "ko-KR"]  # 根据实际情况调整
-    if lang is not None and lang not in allowed_langs:
+    allowed_lang_shorts = ["zh", "en", "ja", "ko"]  # 短代码列表
+    # 提取主语言代码进行比较（兼容前端发送的短代码如 'zh'）
+    lang_short = lang.split("-")[0] if lang else None
+    if lang is not None and lang not in allowed_langs and lang_short not in allowed_lang_shorts:
         logger.warning(f"⚠️ lang='{lang}' 不在允许列表中: {allowed_langs}")
         # 可以设置为默认值或保留原值
         # lang = "zh-CN"  # 取消注释以强制使用默认值
@@ -119,7 +122,8 @@ async def api_list_moments(
         filter_lang = None
         logger.warning("⚠️ filter_lang参数为空字符串，已转为None")
 
-    if filter_lang is not None and filter_lang not in allowed_langs:
+    filter_lang_short = filter_lang.split("-")[0] if filter_lang else None
+    if filter_lang is not None and filter_lang not in allowed_langs and filter_lang_short not in allowed_lang_shorts:
         logger.warning(f"⚠️ filter_lang='{filter_lang}' 不在允许列表中: {allowed_langs}")
 
     # ============ 3. 处理 user_id ============

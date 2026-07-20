@@ -1210,7 +1210,7 @@ async def _batch_generate_companions_core(data: dict):
             # 使用线程池执行同步LLM调用，避免阻塞异步事件循环（关键优化）
             loop = asyncio.get_event_loop()
             def _sync_llm_invoke():
-                llm = get_llm(temperature=0.9, max_tokens=4096)
+                llm = get_llm(temperature=0.9, max_tokens=1024)
                 resp = llm.invoke([SystemMessage(content=prompt)])
                 return resp
 

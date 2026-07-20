@@ -36,7 +36,7 @@ def get_llm(
     api_key_overrides: 管理端 config_json 中的 anthropic_key / deepseek_key / openai_key，非空时优先于环境变量。"""
     cfg = _get_agent_config()
     temperature = temperature if temperature is not None else cfg.get("temperature", 0.93)
-    max_tokens = max_tokens if max_tokens is not None else cfg.get("max_tokens", 4096)
+    max_tokens = max_tokens if max_tokens is not None else cfg.get("max_tokens", 1024)
     provider = (provider or cfg.get("model_provider") or os.getenv("MODEL_PROVIDER", "anthropic")).lower()
 
     def _override_or_env(field: str, env_name: str) -> str:

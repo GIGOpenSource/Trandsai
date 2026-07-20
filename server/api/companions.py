@@ -635,7 +635,7 @@ async def api_generate_persona(data: dict):
     )
 
     try:
-        llm = get_llm(temperature=0.9, max_tokens=4096)
+        llm = get_llm(temperature=0.9, max_tokens=1024)
         resp = llm.invoke([SystemMessage(content=prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp)
         result = _extract_json(text)

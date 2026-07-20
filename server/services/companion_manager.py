@@ -399,7 +399,7 @@ class CompanionManager:
         return result
 
     def list_all_for_any(self, filter_type: str = "all", user_id: Optional[int] = None) -> List[Dict]:
-        """获取所有 companions 列表
+        """获取所有 companions 列表（优化版本：批量查询代替 N+1）
 
         Args:
             filter_type: 过滤类型
@@ -417,53 +417,59 @@ class CompanionManager:
         if user_id and filter_type in ("mine", "mine_chatted"):
             user_info = self._get_user_info(user_id)
 
+        # ========== 性能优化：批量预查询 ==========
+        # 1. 批量查询所有用户的 companion 状态（避免 to_dict 中的 N+1）
+        user_states = {}
+        if user_id:
+            user_states = self._batch_get_user_states(user_id)
+
+        # 2. 批量查询所有有对话的 companion IDs（用于 chatted 和 last_message）
+        chatted_companion_ids = set()
+        last_messages = {}  # companion_id -> last_message_info
+
+        if filter_type in ("chatted", "mine_chatted", "all"):
+            # 一次查询获取所有有对话的 companion
+            chatted_companion_ids, last_messages = self._batch_get_chatted_info(user_id)
+
+        # 3. 批量查询所有用户的亲密度（用于 affectionate 过滤）
+        user_affections = {}
+        if user_id and filter_type in ("affectionate",):
+            user_affections = self._batch_get_user_affections(user_id)
+
         for c in self._companions.values():
             # 根据 filter_type 过滤
             if filter_type == "chatted":
-                # 只返回有消息记录的智能体（检查短期记忆，而不是 turns）
-                if user_id:
-                    user_short_term = ShortTermMemory(c.profile.id, user_id)
-                    recent = user_short_term.get_recent(1)
-                    if not recent:
-                        continue
-                else:
-                    recent = c.memory.short_term.get_recent(1)
-                    if not recent:
-                        continue
+                # 使用预查询的数据判断是否有对话
+                if c.profile.id not in chatted_companion_ids:
+                    continue
             elif filter_type == "affectionate":
-                # 只返回用户亲密度 > 5 的智能体
+                # 使用预查询的亲密度数据
                 if user_id:
-                    user_affection = self._get_user_affection(c, user_id)
-                    if user_affection <= 5:
+                    affection = user_affections.get(c.profile.id, 0)
+                    if affection <= 5:
                         continue
                 else:
                     if not c.state or c.state.affection <= 5:
                         continue
             elif filter_type == "mine":
-                # 只返回自己创建的智能体
                 if not self._is_my_companion(c, user_info):
                     continue
             elif filter_type == "mine_chatted":
-                # 只返回自己创建的智能体
                 if not self._is_my_companion(c, user_info):
                     continue
 
-            item = c.to_dict(user_id=user_id)
+            # 使用预查询的状态数据构建 item（避免 to_dict 中的 N+1）
+            item = self._build_companion_dict(c, user_id, user_states)
 
-            # 使用用户特定的短期记忆获取最近消息
-            if user_id:
-                user_short_term = ShortTermMemory(c.profile.id, user_id)
-                recent = user_short_term.get_recent(1)
-            else:
-                recent = c.memory.short_term.get_recent(1)
-
-            if recent:
-                last = recent[-1]
+            # 使用预查询的 last_message 数据
+            if c.profile.id in last_messages:
+                last = last_messages[c.profile.id]
                 item["last_message"] = last["content"]
                 item["last_message_time"] = last["timestamp"]
             else:
                 item["last_message"] = ""
                 item["last_message_time"] = ""
+
             result.append(item)
 
         # 排序逻辑
@@ -473,6 +479,158 @@ class CompanionManager:
             result.sort(key=lambda x: x.get("state", {}).get("affection", 0), reverse=True)
 
         return result
+
+    # ========== 批量查询辅助方法（性能优化） ==========
+
+    def _batch_get_user_states(self, user_id: int) -> Dict[str, dict]:
+        """批量获取用户对所有 companions 的状态（避免 N+1 查询）
+
+        Returns:
+            Dict[companion_id, {"affection": float, "turns": int}]
+        """
+        result = {}
+        with get_db() as db:
+            # 一次查询获取用户对所有 companions 的状态
+            states = (
+                db.query(UserCompanionStateORM)
+                .filter(UserCompanionStateORM.user_id == user_id)
+                .all()
+            )
+            for s in states:
+                result[s.companion_id] = {
+                    "affection": s.affection if s.affection is not None else 0,
+                    "turns": s.turns if s.turns is not None else 0,
+                }
+
+            # 对于没有用户特定状态的 companions，查询全局状态
+            companion_ids = set(self._companions.keys()) - set(result.keys())
+            if companion_ids:
+                global_states = (
+                    db.query(CompanionStateORM)
+                    .filter(CompanionStateORM.companion_id.in_(companion_ids))
+                    .all()
+                )
+                for gs in global_states:
+                    result[gs.companion_id] = {
+                        "affection": gs.affection if gs.affection is not None else 0,
+                        "turns": gs.turns if gs.turns is not None else 0,
+                    }
+
+        return result
+
+    def _batch_get_chatted_info(self, user_id: Optional[int]) -> tuple:
+        """批量获取所有有对话的 companion 信息
+
+        Returns:
+            (chatted_ids: Set[str], last_messages: Dict[str, dict])
+        """
+        chatted_ids = set()
+        last_messages = {}
+
+        with get_db() as db:
+            # 一次查询获取所有有对话记录的 companion
+            if user_id:
+                # 查询指定用户的对话记录
+                query = (
+                    db.query(
+                        ShortTermMessageORM.companion_id,
+                        ShortTermMessageORM.content,
+                        ShortTermMessageORM.created_at,
+                    )
+                    .filter(ShortTermMessageORM.user_id == user_id)
+                    .order_by(ShortTermMessageORM.created_at.desc())
+                )
+                rows = query.all()
+
+                # 按 companion_id 分组，获取每个 companion 的最近一条消息
+                seen_companions = set()
+                for companion_id, content, created_at in rows:
+                    if companion_id not in seen_companions:
+                        seen_companions.add(companion_id)
+                        chatted_ids.add(companion_id)
+                        last_messages[companion_id] = {
+                            "content": content,
+                            "timestamp": created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at),
+                        }
+                        # 已经找到所有 companions 的最近消息，可以提前退出
+                        if len(seen_companions) >= len(self._companions):
+                            break
+            else:
+                # 未登录用户：查询所有 companions 的对话记录
+                query = (
+                    db.query(
+                        ShortTermMessageORM.companion_id,
+                        ShortTermMessageORM.content,
+                        ShortTermMessageORM.created_at,
+                    )
+                    .order_by(ShortTermMessageORM.created_at.desc())
+                )
+                rows = query.all()
+
+                seen_companions = set()
+                for companion_id, content, created_at in rows:
+                    if companion_id not in seen_companions:
+                        seen_companions.add(companion_id)
+                        chatted_ids.add(companion_id)
+                        last_messages[companion_id] = {
+                            "content": content,
+                            "timestamp": created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at),
+                        }
+                        if len(seen_companions) >= len(self._companions):
+                            break
+
+        return chatted_ids, last_messages
+
+    def _batch_get_user_affections(self, user_id: int) -> Dict[str, float]:
+        """批量获取用户对所有 companions 的亲密度
+
+        Returns:
+            Dict[companion_id, affection]
+        """
+        result = {}
+        with get_db() as db:
+            states = (
+                db.query(UserCompanionStateORM)
+                .filter(UserCompanionStateORM.user_id == user_id)
+                .all()
+            )
+            for s in states:
+                result[s.companion_id] = s.affection if s.affection is not None else 0
+
+            # 对于没有用户特定状态的 companions，使用全局亲密度
+            companion_ids = set(self._companions.keys()) - set(result.keys())
+            if companion_ids:
+                global_states = (
+                    db.query(CompanionStateORM)
+                    .filter(CompanionStateORM.companion_id.in_(companion_ids))
+                    .all()
+                )
+                for gs in global_states:
+                    result[gs.companion_id] = gs.affection if gs.affection is not None else 0
+
+        return result
+
+    def _build_companion_dict(self, companion: "Companion", user_id: Optional[int], user_states: Dict[str, dict]) -> dict:
+        """使用预查询的状态数据构建 companion 字典（避免 to_dict 中的 N+1）"""
+        avatar = companion.profile.avatar_url
+        is_generating = avatar == "__GENERATING__"
+        if not avatar or is_generating:
+            avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={companion.profile.id}"
+
+        state_payload = companion.state.model_dump()
+
+        # 使用预查询的用户状态
+        if user_id is not None and companion.profile.id in user_states:
+            user_state = user_states[companion.profile.id]
+            state_payload["affection"] = user_state["affection"]
+            state_payload["turns"] = user_state["turns"]
+
+        return {
+            "profile": companion.profile.model_dump(),
+            "state": state_payload,
+            "avatar": avatar,
+            "avatar_generating": is_generating,
+        }
 
     def _get_user_info(self, user_id: int) -> dict:
         """获取用户信息（username, nickname）"""
