@@ -643,24 +643,32 @@ async def api_generate_persona(data: dict):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
-    # 创建 - 需要登录
-
 
 @router.post("/companions")
-async def api_list_companions(
-        x_token: Optional[str] = Header(None, alias="x-token"),
+async def api_create_companion(
+        data: dict,
         user_id: int = Depends(require_permissions(IsAuthenticated)),
-        filter_type: str = Query("all", pattern="^(all|chatted|affectionate)$")
 ):
-    """获取当前用户的 companions 列表
+    """用户端创建伴侣 - 需要登录"""
+    from core.database import UserORM
 
-    Args:
-        filter_type: 过滤类型
-            - "all": 返回所有智能体（默认）
-            - "chatted": 返回有对话的智能体
-            - "affectionate": 返回有亲密度的智能体
-    """
-    return get_companion_manager().list_all_for_any(filter_type=filter_type)
+    # 获取用户信息，设置 created_by
+    with get_db() as db:
+        user = db.query(UserORM).filter(UserORM.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="用户不存在")
+
+    # 设置 created_by 为 user_id
+    data["created_by"] = str(user_id)
+
+    try:
+        companion = get_companion_manager().create(data)
+        # 启动后台异步生成头像
+        if companion.profile.avatar_url == "__GENERATING__":
+            start_avatar_generation(companion.profile.id, companion.profile.model_dump())
+        return companion.to_dict(user_id=user_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.get("/companions")
