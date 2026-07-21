@@ -1090,12 +1090,24 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             companion.state.affection = result["affection"]
             companion.state.turns += 1
 
-            if result.get("evolved_personality"):
-                companion.state.evolved_personality = result["evolved_personality"]
-            if result.get("evolved_background"):
-                companion.state.evolved_background = result["evolved_background"]
-            if result.get("evolved_speech_style"):
-                companion.state.evolved_speech_style = result["evolved_speech_style"]
+            # 每5轮触发人格进化（独立调用）
+            if companion.state.turns > 0 and companion.state.turns % 5 == 0:
+                try:
+                    from services.agent import evolve_persona
+                    evolved = evolve_persona(
+                        companion.profile.model_dump(),
+                        companion.state.model_dump(),
+                        memory_text,
+                        language,
+                    )
+                    if evolved.get("evolved_personality"):
+                        companion.state.evolved_personality = evolved["evolved_personality"]
+                    if evolved.get("evolved_background"):
+                        companion.state.evolved_background = evolved["evolved_background"]
+                    if evolved.get("evolved_speech_style"):
+                        companion.state.evolved_speech_style = evolved["evolved_speech_style"]
+                except Exception as e:
+                    logger.warning("Persona evolve failed: %s", e)
 
             if result.get("new_facts"):
                 companion.memory.facts.add_facts(result["new_facts"])
