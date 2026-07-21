@@ -267,14 +267,11 @@ async def _deliver_assistant_content(
                 if await _interrupted():
                     return sent_segments, True
                 if delivery_mood == "excited":
-                    seg_delay = random.uniform(0.1, 0.52) + len(sub_clean) * 0.018
+                    seg_delay = random.uniform(0.1, 0.3)
                 elif delivery_mood == "calm":
-                    seg_delay = random.uniform(0.72, 1.9) + len(sub_clean) * 0.034
+                    seg_delay = random.uniform(0.2, 0.5)
                 else:
-                    seg_delay = max(
-                        0.16,
-                        min(2.15, 0.28 + len(sub_clean) * 0.053 + random.uniform(-0.1, 0.4)),
-                    )
+                    seg_delay = random.uniform(0.1, 0.4)
                 await asyncio.sleep(seg_delay)
                 if await _interrupted():
                     return sent_segments, True
@@ -515,7 +512,7 @@ async def _send_proactive_message(websocket: WebSocket, companion, lang: str, co
         resp = await loop.run_in_executor(None, lambda: llm.invoke([SystemMessage(content=prompt)]))
         text = resp.content.strip()
 
-        await asyncio.sleep(random.uniform(1.0, 2.5))
+        await asyncio.sleep(random.uniform(0.5, 1.0))
 
         try:
             aff = float(getattr(companion.state, "affection", 0) or 0)
@@ -1039,18 +1036,11 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             response_text = result["response"]
             response_len = len(response_text)
 
-            # 首条气泡前：偏短等、少「后台算完再一次性吐字」感
+            # 首条气泡前延迟（优化：缩短到最多1.5秒）
             if has_leave_intent:
-                pre_delay = (
-                    random.uniform(0.85, 1.9)
-                    + min(3.2, response_len * 0.034)
-                    + random.uniform(0, 0.6)
-                )
+                pre_delay = random.uniform(0.3, 1.0)
             else:
-                pre_delay = min(2.35, max(0.1, response_len * 0.016) + random.uniform(0, 0.7))
-                if response_len > 100:
-                    pre_delay += random.uniform(0, 0.4)
-                pre_delay = min(3.6, pre_delay)
+                pre_delay = min(1.5, max(0.1, response_len * 0.008) + random.uniform(0, 0.4))
             await asyncio.sleep(pre_delay)
 
             aff = float(getattr(companion.state, "affection", 0) or 0)
