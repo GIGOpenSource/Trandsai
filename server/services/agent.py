@@ -32,8 +32,8 @@ def get_llm(
     provider: str = None,
     api_key_overrides: Optional[Dict[str, str]] = None,
 ):
-    """LLM支持 가져옵니다. 지원되는 모델: anthropic / deepseek / openai. 데이터베이스 설정을 우선 사용합니다.
-    api_key_overrides: 管理端 config_json 中的 anthropic_key / deepseek_key / openai_key，非空时优先于环境变量。"""
+    """LLM支持 가져옵니다. 지원되는 모델: anthropic / deepseek / openai / grok. 데이터베이스 설정을 우선 사용합니다.
+    api_key_overrides: 管理端 config_json 中的 anthropic_key / deepseek_key / openai_key / xai_key，非空时优先于环境变量。"""
     cfg = _get_agent_config()
     temperature = temperature if temperature is not None else cfg.get("temperature", 0.93)
     max_tokens = max_tokens if max_tokens is not None else cfg.get("max_tokens", 1024)
@@ -57,6 +57,18 @@ def get_llm(
             max_tokens=max_tokens,
             api_key=api_key,
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 百炼固定兼容地址
+        )
+
+    if provider == "grok":
+        api_key = _override_or_env("xai_key", "XAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("请设置环境变量 XAI_API_KEY")
+        return ChatOpenAI(
+            model="grok-3-latest",  # xAI Grok 模型
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=api_key,
+            base_url="https://api.x.ai/v1",  # xAI API 端点
         )
 
     if provider == "openai":
