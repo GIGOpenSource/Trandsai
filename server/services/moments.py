@@ -11,6 +11,7 @@ from core.database import CompanionORM, MomentCommentORM, MomentLikeORM, MomentO
 from core.i18n import normalize_ui_language
 from core.state import get_companion_manager
 from services.agent import get_llm
+from services.llm.client import llm_invoke
 from services.companion_manager import Companion
 from services.image_generation import generate_image_with_cache, generate_moment_image_prompt
 from services.culture_data import infer_language_from_city
@@ -377,7 +378,7 @@ def generate_moment_caption(companion: Companion, lang: str = "zh", max_retries:
         prompt = _build_moment_prompt(companion, lang)
 
         for attempt in range(max_retries):
-            resp = llm.invoke([("human", prompt)])
+            resp = llm_invoke(llm, [("human", prompt)], node="moment_caption")
             raw_content = resp.content
             text = raw_content.strip()
             text = text.strip('"').strip("'").strip()
@@ -1136,7 +1137,7 @@ def generate_ai_comment(commenter: Companion, poster: Companion, caption: str, l
     try:
         llm = get_llm(temperature=0.9, max_tokens=60)
         prompt = _build_comment_prompt(commenter, poster, caption, lang)
-        resp = llm.invoke([("human", prompt)])
+        resp = llm_invoke(llm, [("human", prompt)], node="moment_llm")
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
         text = text.strip('"').strip("'").strip()
         if len(text) > 100:
@@ -1272,7 +1273,7 @@ def generate_ai_reply_to_user(poster: Companion, caption: str, user_comment: str
     try:
         llm = get_llm(temperature=0.9, max_tokens=80)
         prompt = _build_reply_prompt(poster, caption, user_comment, lang)
-        resp = llm.invoke([("human", prompt)])
+        resp = llm_invoke(llm, [("human", prompt)], node="moment_llm")
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
         text = text.strip('"').strip("'").strip()
         if len(text) > 100:
@@ -1408,7 +1409,7 @@ def generate_ai_reply_to_ai(poster: Companion, caption: str, ai_comment: str, co
     try:
         llm = get_llm(temperature=0.9, max_tokens=80)
         prompt = _build_reply_to_ai_prompt(poster, caption, ai_comment, commenter_name, lang)
-        resp = llm.invoke([("human", prompt)])
+        resp = llm_invoke(llm, [("human", prompt)], node="moment_llm")
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
         text = text.strip('"').strip("'").strip()
         if len(text) > 100:
@@ -1691,3 +1692,50 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
                     "reply_to_name": reply_to_name,
                 })
         return result
+
+
+def get_moment_comments_batch(moment_ids: list, limit: int = 10) -> dict:
+    """批量获取多条朋友圈评论，避免 feed N+1。"""
+    if not moment_ids:
+        return {}
+    with get_db() as db:
+        comments = (
+            db.query(MomentCommentORM)
+            .filter(MomentCommentORM.moment_id.in_(moment_ids))
+            .order_by(MomentCommentORM.moment_id, MomentCommentORM.created_at)
+            .all()
+        )
+        ai_companion_ids = list({c.companion_id for c in comments if not c.user_device_id and c.companion_id})
+        companions_map = {}
+        if ai_companion_ids:
+            companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(ai_companion_ids)).all()
+            companions_map = {c.id: c for c in companions_rows}
+
+        grouped: dict = {mid: [] for mid in moment_ids}
+        for c in comments:
+            if len(grouped.get(c.moment_id, [])) >= limit:
+                continue
+            if c.user_device_id:
+                grouped.setdefault(c.moment_id, []).append({
+                    "id": c.id,
+                    "is_user": True,
+                    "companion_id": None,
+                    "companion_name": "我",
+                    "content": c.content,
+                    "created_at": serialize_datetime(c.created_at),
+                    "parent_id": c.parent_id,
+                    "reply_to_name": None,
+                })
+            else:
+                companion = companions_map.get(c.companion_id)
+                grouped.setdefault(c.moment_id, []).append({
+                    "id": c.id,
+                    "is_user": False,
+                    "companion_id": c.companion_id,
+                    "companion_name": companion.name if companion else "Unknown",
+                    "content": c.content,
+                    "created_at": serialize_datetime(c.created_at),
+                    "parent_id": c.parent_id,
+                    "reply_to_name": None,
+                })
+        return grouped

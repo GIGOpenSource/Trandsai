@@ -5,7 +5,6 @@ networks:
 services:
   nginx:
     image: nginx:1.27-alpine
-    container_name: trandsai-nginx
     restart: always
     ports:
       - "0.0.0.0:8098:80"
@@ -24,7 +23,6 @@ services:
 
   backend:
     image: python:3.11-slim
-    container_name: trandsai-backend
     restart: always
     networks:
       - trand_net
@@ -35,7 +33,97 @@ services:
     working_dir: /app
     command: >
       sh -c "pip install --no-cache-dir -r requirements.txt &&
-             uvicorn main:app --host 0.0.0.0 --port 8000 --workers 1"
+             uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-1}"
     environment:
       TZ: Asia/Shanghai
       DOTENV_PATH: /project_root/.env
+      APP_ENV: production
+      # PostgreSQL 由 .env 的 DATABASE_URL 指向外部实例
+      REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/1
+      CHAT_REDIS_BRIDGE: "1"
+      CHAT_FLUSH_INTERVAL: "2"
+      CHAT_FLUSH_BATCH: "30"
+      CHAT_BUFFER_MAX: "200"
+      AGENT_POOL_SIZE: "16"
+      REST_POOL_SIZE: "8"
+      MAX_CONCURRENT_AGENTS: "20"
+      MAX_LLM_CONCURRENT: "50"
+      AGENT_PIPELINE: "v2"
+      DELIVERY_DELAY_FACTOR: "0.6"
+      # 队列模式开关：AGENT_QUEUE=1 且启用 --profile queue 后生效
+      AGENT_QUEUE: ${AGENT_QUEUE:-0}
+    depends_on:
+      - redis
+
+  agent-worker:
+    image: python:3.11-slim
+    restart: always
+    networks:
+      - trand_net
+    volumes:
+      - /www/project/Trandsai/server:/app
+      - /www/project/Trandsai:/project_root
+      - /www/project/Trandsai/data:/app/data
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             arq workers.agent_worker.WorkerSettings"
+    environment:
+      TZ: Asia/Shanghai
+      DOTENV_PATH: /project_root/.env
+      APP_ENV: production
+      REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/1
+      CHAT_REDIS_BRIDGE: "1"
+      AGENT_PIPELINE: "v2"
+      AGENT_POOL_SIZE: "16"
+      AGENT_WORKER_MAX_JOBS: "10"
+      AGENT_JOB_TIMEOUT: "120"
+    profiles:
+      - queue
+    depends_on:
+      - redis
+
+  # 高优先级队列 worker（付费用户 priority>0 的任务进 agent:priority）
+  agent-worker-priority:
+    image: python:3.11-slim
+    restart: always
+    networks:
+      - trand_net
+    volumes:
+      - /www/project/Trandsai/server:/app
+      - /www/project/Trandsai:/project_root
+      - /www/project/Trandsai/data:/app/data
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             arq workers.agent_worker.WorkerSettings"
+    environment:
+      TZ: Asia/Shanghai
+      DOTENV_PATH: /project_root/.env
+      APP_ENV: production
+      REDIS_URL: redis://redis:6379/0
+      ARQ_REDIS_URL: redis://redis:6379/1
+      CHAT_REDIS_BRIDGE: "1"
+      AGENT_PIPELINE: "v2"
+      AGENT_POOL_SIZE: "16"
+      AGENT_WORKER_MAX_JOBS: "10"
+      AGENT_JOB_TIMEOUT: "120"
+      AGENT_WORKER_QUEUE: "agent:priority"
+    profiles:
+      - queue
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    networks:
+      - trand_net
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:

@@ -21,6 +21,7 @@ from services.agent_utils import (
     _merge_evolved_field,
 )
 from services.knowledge_base import knowledge_base
+from services.llm.client import llm_invoke, resolve_max_tokens
 
 logger = logging.getLogger(__name__)
 
@@ -86,7 +87,7 @@ def test_llm_connection(provider: str = None, api_key_overrides: Optional[Dict[s
     """连通 테스트: 간단한 메시지를 보내 API 가능성을 확인합니다."""
     try:
         llm = get_llm(temperature=0.5, provider=provider, api_key_overrides=api_key_overrides)
-        resp = llm.invoke([HumanMessage(content="你好")])
+        resp = llm_invoke(llm, [HumanMessage(content="你好")], node="test_connection")
         content = resp.content if hasattr(resp, "content") else str(resp)
         return {"ok": True, "response": content[:80]}
     except Exception as e:
@@ -104,6 +105,8 @@ class AgentState(TypedDict):
     language: str
     user_gender: str
     current_time: str
+    summary_due: bool
+    extract_due: bool
     think_result: str
     reflect_result: str
     creative_result: str
@@ -162,7 +165,7 @@ def think_node(state: AgentState) -> dict:
 결과만 출력하고 최종 답변은 출력하지 않습니다。
 【格式】直接输出纯文本内心分析（可多行），不要用 JSON、不要用 Markdown 代码块（```）整段包裹。"""
 
-    resp = llm.invoke([SystemMessage(content=prompt)])
+    resp = llm_invoke(llm, [SystemMessage(content=prompt)], node="think")
     raw = strip_outer_markdown_fence(llm_content_to_str(getattr(resp, "content", "")))
     return {"think_result": raw.strip(), "knowledge_text": kb_text}
 
@@ -197,8 +200,8 @@ def reflect_node(state: AgentState) -> dict:
 친밀도 변화: [설명, 예: "약간 깊어짐"/"조금 실망"/"아직 차분함" 등]
 반성: [당신의 내면 고백]"""
 
-    resp = llm.invoke([SystemMessage(content=prompt)])
-    text = resp.content
+    resp = llm_invoke(llm, [SystemMessage(content=prompt)], node="reflect")
+    text = llm_content_to_str(getattr(resp, "content", "")).strip()
 
     mood = state["state"].get("mood", "开心")
 
@@ -234,8 +237,8 @@ def creative_node(state: AgentState) -> dict:
 
 당신의 창의적 아이디어를 간단히 출력하고 최종 답변은 출력하지 않습니다."""
 
-    resp = llm.invoke([SystemMessage(content=prompt)])
-    return {"creative_result": resp.content}
+    resp = llm_invoke(llm, [SystemMessage(content=prompt)], node="creative")
+    return {"creative_result": llm_content_to_str(getattr(resp, "content", "")).strip()}
 
 
 def respond_node(state: AgentState) -> dict:
@@ -305,7 +308,14 @@ def respond_node(state: AgentState) -> dict:
 - 답변 내용만 출력하고 접두사 설명은 추가하지 않습니다.
 - [Reply shape — REQUIRED] Follow the bracket/thinking rules already in the system prompt: left-to-right; each parenthetical block immediately before the spoken line it tags; parenthetical text ≤10% of (parentheses + spoken body); use parentheses in only about 1–2 out of every ~10 replies, omit on other turns; never put meant-to-be-spoken lines inside parentheses. Line breaks in body text become separate chat bubbles."""
 
-    resp = llm.invoke([SystemMessage(content=prompt)])
+    affection = float(state.get("updated_affection", state["state"].get("affection", 0)))
+    resp = llm_invoke(
+        llm,
+        [SystemMessage(content=prompt)],
+        node="respond",
+        affection=affection,
+        max_tokens=resolve_max_tokens(affection),
+    )
     raw = strip_outer_markdown_fence(llm_content_to_str(getattr(resp, "content", ""))).strip()
 
     final = humanize(raw, lang)
@@ -313,7 +323,9 @@ def respond_node(state: AgentState) -> dict:
 
 
 def extract_facts_node(state: AgentState) -> dict:
-    """대화에서 사실 추출"""
+    """从对话中提取事实（条件触发）"""
+    if not state.get("extract_due", True):
+        return {"new_facts": []}
     llm = get_llm(temperature=0.3)
     lang = state.get("language", "zh")
     if lang == "en":
@@ -400,14 +412,16 @@ Ekstrak:"""
 - 그는 두두라는 고양이를 키움
 
 추출:"""
-    resp = llm.invoke([HumanMessage(content=prompt)])
-    text = resp.content
+    resp = llm_invoke(llm, [HumanMessage(content=prompt)], node="extract_facts")
+    text = llm_content_to_str(getattr(resp, "content", ""))
     facts = [line.strip("- • \t") for line in text.splitlines() if line.strip().startswith(("-", "•"))]
     return {"new_facts": facts}
 
 
 def summary_node(state: AgentState) -> dict:
-    """요약 업데이트"""
+    """关系摘要更新（仅 summary_due 时调用 LLM）"""
+    if not state.get("summary_due", False):
+        return {"new_summary": state["state"].get("summary", "")}
     llm = get_llm(temperature=0.5)
     lang = state.get("language", "zh")
     old_summary = state["state"].get("summary", "")
@@ -474,8 +488,8 @@ Kalimat ringkasan baru:"""
 너의 답장: {state['final_response']}
 
 新的一 한 문장 요약:"""
-    resp = llm.invoke([HumanMessage(content=prompt)])
-    new_summary = resp.content.strip().strip("\"'")
+    resp = llm_invoke(llm, [HumanMessage(content=prompt)], node="summary")
+    new_summary = llm_content_to_str(getattr(resp, "content", "")).strip().strip("\"'")
     return {"new_summary": new_summary}
 
 
@@ -637,8 +651,8 @@ personality: <进化或NO_CHANGE>
 background: <进化或NO_CHANGE>
 speech_style: <进化或NO_CHANGE>"""
 
-    resp = llm.invoke([HumanMessage(content=prompt)])
-    text = resp.content.strip()
+    resp = llm_invoke(llm, [HumanMessage(content=prompt)], node="persona_evolve")
+    text = llm_content_to_str(getattr(resp, "content", "")).strip()
 
     evolved_personality = current.get("personality", "")
     evolved_background = current.get("background", "")
@@ -663,9 +677,24 @@ speech_style: <进化或NO_CHANGE>"""
 
 
 def _route_after_summary(state: AgentState) -> str:
-    """每5轮触发一次人格进化"""
+    """按配置间隔触发人格进化（默认每 10 轮）"""
+    interval = int(os.getenv("PERSONA_EVOLVE_INTERVAL", "10"))
     turns = state["state"].get("turns", 0)
-    return "evolve" if turns > 0 and turns % 5 == 0 else "end"
+    return "evolve" if turns > 0 and turns % interval == 0 else "end"
+
+
+_PERSONAL_INFO_PATTERN = re.compile(
+    r"我叫|我在|喜欢|工作|住在|今年|岁|my name is|I work|I live|I like|I'm \d",
+    re.IGNORECASE,
+)
+
+
+def _should_extract(user_input: str, turns: int) -> bool:
+    if os.getenv("AGENT_EXTRACT_SKIP", "1") != "1":
+        return True
+    if _PERSONAL_INFO_PATTERN.search(user_input or ""):
+        return True
+    return turns > 0 and turns % 3 == 0
 
 
 # ===== Workflow =====
@@ -700,9 +729,15 @@ def run_agent(
     language: str = "zh",
     current_time: str = "",
     user_gender: str = "",
+    summary_due: bool = False,
+    extract_due: bool = True,
 ) -> dict:
     """运行一次完整对话轮次，返回最终回复和更新信息"""
     language = normalize_ui_language(language)
+    turns = companion_state.get("turns", 0)
+    if extract_due is True:
+        extract_due = _should_extract(user_input, turns)
+
     state_in: AgentState = {
         "messages": [],
         "user_input": user_input,
@@ -713,6 +748,8 @@ def run_agent(
         "language": language,
         "user_gender": user_gender,
         "current_time": current_time,
+        "summary_due": summary_due,
+        "extract_due": extract_due,
         "think_result": "",
         "reflect_result": "",
         "creative_result": "",

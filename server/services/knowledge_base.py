@@ -5,11 +5,10 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-import chromadb
-from chromadb.config import Settings
 from pydantic import BaseModel, Field
 from sqlalchemy import desc
 
+from core.chroma_client import evict_client, get_persistent_client
 from core.database import KnowledgeEntryORM, get_db
 from services.memory import get_embedding
 
@@ -44,12 +43,9 @@ class KnowledgeBase:
         self.persist_dir = persist_dir
         os.makedirs(self.persist_dir, exist_ok=True)
 
-        # 彻底修复 ChromaDB 兼容性问题（KeyError: '_type'）
+        # 彻底修复 ChromaDB 兼容性问题（KeyError: '_type'）；client 走全局复用（S-18）
         try:
-            self.client = chromadb.PersistentClient(
-                path=self.persist_dir,
-                settings=Settings(anonymized_telemetry=False),
-            )
+            self.client = get_persistent_client(self.persist_dir)
             # 使用最安全的创建方式，避免旧元数据冲突
             self.collection = self.client.get_or_create_collection(
                 name="knowledge_base",
@@ -59,11 +55,12 @@ class KnowledgeBase:
         except Exception as e:
             logger.error("KnowledgeBase 初始化失败: %s。尝试重置...", str(e))
             try:
-                # 如果失败，删除旧目录并重新创建
+                # 如果失败，删除旧目录并重新创建（先逐出缓存的 client，避免复用失效句柄）
+                evict_client(self.persist_dir)
                 if os.path.exists(self.persist_dir):
                     shutil.rmtree(self.persist_dir)
                 os.makedirs(self.persist_dir, exist_ok=True)
-                self.client = chromadb.PersistentClient(path=self.persist_dir)
+                self.client = get_persistent_client(self.persist_dir)
                 self.collection = self.client.create_collection(
                     name="knowledge_base",
                     metadata={"hnsw:space": "cosine"},

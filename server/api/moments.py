@@ -3,12 +3,14 @@ from typing import Optional
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query
 
+from core.rest_async import run_rest
 from core.state import get_companion_manager
 from services.moments import (
     add_user_comment,
     count_moments_feed,
     get_companion_moments,
     get_moment_comments,
+    get_moment_comments_batch,
     get_moment_detail,
     get_moments_feed,
     regenerate_moment_image,
@@ -35,26 +37,29 @@ async def api_list_moments(
 ):
     """获取朋友圈列表，包含评论"""
     device_id = _get_device_id(x_device_id)
-    moments = get_moments_feed(
-        limit=limit,
-        offset=offset,
-        device_id=device_id,
-        lang=lang or "",
-        filter_lang=filter_lang or "",
-        gender=gender or "",
-        orientation=orientation or "",
-    )
 
-    # 为每条朋友圈加载评论
-    for moment in moments:
-        moment["comments"] = get_moment_comments(moment["id"], limit=10)
+    def _load():
+        moments = get_moments_feed(
+            limit=limit,
+            offset=offset,
+            device_id=device_id,
+            lang=lang or "",
+            filter_lang=filter_lang or "",
+            gender=gender or "",
+            orientation=orientation or "",
+        )
+        moment_ids = [m["id"] for m in moments]
+        comments_map = get_moment_comments_batch(moment_ids, limit=10)
+        for moment in moments:
+            moment["comments"] = comments_map.get(moment["id"], [])
+        total = count_moments_feed(
+            filter_lang=filter_lang or "",
+            gender=gender or "",
+            orientation=orientation or "",
+        )
+        return {"moments": moments, "total": total}
 
-    total = count_moments_feed(
-        filter_lang=filter_lang or "",
-        gender=gender or "",
-        orientation=orientation or "",
-    )
-    return {"moments": moments, "total": total}
+    return await run_rest(_load)
 
 
 @router.get("/api/moments/{moment_id}")
@@ -64,10 +69,17 @@ async def api_get_moment_detail(
 ):
     """获取单条朋友圈详情，包含评论"""
     device_id = _get_device_id(x_device_id)
-    moment = get_moment_detail(moment_id, device_id=device_id)
+
+    def _load():
+        moment = get_moment_detail(moment_id, device_id=device_id)
+        if not moment:
+            return None
+        moment["comments"] = get_moment_comments(moment_id, limit=100)
+        return moment
+
+    moment = await run_rest(_load)
     if not moment:
         raise HTTPException(status_code=404, detail="朋友圈不存在")
-    moment["comments"] = get_moment_comments(moment_id, limit=100)
     return moment
 
 

@@ -7,6 +7,8 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from sqlalchemy import desc, func
+
 from core.database import (
     CompanionORM,
     CompanionStateORM,
@@ -25,6 +27,73 @@ from services.memory import CompanionMemory
 from services.culture_data import infer_language_from_city
 
 logger = logging.getLogger(__name__)
+
+
+def _batch_user_companion_states(user_id: int, companion_ids: List[str]) -> Dict[str, dict]:
+    """Batch load per-user affection/turns for list API (S-10)."""
+    if not companion_ids:
+        return {}
+    with get_db() as db:
+        user_rows = (
+            db.query(UserCompanionStateORM)
+            .filter(
+                UserCompanionStateORM.user_id == user_id,
+                UserCompanionStateORM.companion_id.in_(companion_ids),
+            )
+            .all()
+        )
+        user_map = {
+            r.companion_id: {
+                "affection": r.affection if r.affection is not None else 0,
+                "turns": r.turns if r.turns is not None else 0,
+            }
+            for r in user_rows
+        }
+        missing = [cid for cid in companion_ids if cid not in user_map]
+        if not missing:
+            return user_map
+        global_rows = (
+            db.query(CompanionStateORM)
+            .filter(CompanionStateORM.companion_id.in_(missing))
+            .all()
+        )
+        for gr in global_rows:
+            user_map[gr.companion_id] = {
+                "affection": gr.affection if gr.affection is not None else 0,
+                "turns": gr.turns if gr.turns is not None else 0,
+            }
+        return user_map
+
+
+def _batch_last_messages(companion_ids: List[str]) -> Dict[str, dict]:
+    """一次查询获取多个 companion 的最后一条消息。"""
+    if not companion_ids:
+        return {}
+    with get_db() as db:
+        subq = (
+            db.query(
+                ShortTermMessageORM.companion_id,
+                func.max(ShortTermMessageORM.id).label("max_id"),
+            )
+            .filter(ShortTermMessageORM.companion_id.in_(companion_ids))
+            .group_by(ShortTermMessageORM.companion_id)
+            .subquery()
+        )
+        rows = (
+            db.query(ShortTermMessageORM)
+            .join(subq, ShortTermMessageORM.id == subq.c.max_id)
+            .all()
+        )
+        result = {}
+        for m in rows:
+            ts = m.created_at
+            if ts and ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            result[m.companion_id] = {
+                "content": m.content or "",
+                "timestamp": ts.isoformat() if ts else datetime.now(timezone.utc).isoformat(),
+            }
+        return result
 
 
 def hydrate_user_affection_turns(companion: "Companion", user_id: int) -> None:
@@ -188,13 +257,20 @@ class Companion:
                         )
                     )
 
-    def to_dict(self, user_id: Optional[int] = None) -> dict:
+    def to_dict(
+        self,
+        user_id: Optional[int] = None,
+        user_state: Optional[dict] = None,
+    ) -> dict:
         avatar = self.profile.avatar_url
         is_generating = avatar == "__GENERATING__"
         if not avatar or is_generating:
             avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={self.profile.id}"
         state_payload = self.state.model_dump()
-        if user_id is not None:
+        if user_state:
+            state_payload["affection"] = user_state.get("affection", state_payload.get("affection", 0))
+            state_payload["turns"] = user_state.get("turns", state_payload.get("turns", 0))
+        elif user_id is not None:
             with get_db() as db:
                 ur = (
                     db.query(UserCompanionStateORM)
@@ -416,17 +492,22 @@ class CompanionManager:
                 username = (user.username or "").strip()
                 nickname = (user.nickname or "").strip()
 
+        matched: List[tuple] = []
         for c in self._companions.values():
             created_by = (c.profile.created_by or "").strip()
 
-            # 必须匹配：created_by == user_id 或 username 或 nickname
             if created_by != user_id_str and created_by != username and created_by != nickname:
-                continue  # 不属于该用户，跳过
+                continue
 
-            item = c.to_dict(user_id=user_id)
-            recent = c.memory.short_term.get_recent(1)
-            if recent:
-                last = recent[-1]
+            matched.append((c, c.profile.id))
+
+        companion_ids = [cid for _, cid in matched]
+        last_msgs = _batch_last_messages(companion_ids)
+        state_map = _batch_user_companion_states(user_id, companion_ids)
+        for c, cid in matched:
+            item = c.to_dict(user_id=user_id, user_state=state_map.get(cid))
+            last = last_msgs.get(cid)
+            if last:
                 item["last_message"] = last["content"]
                 item["last_message_time"] = last["timestamp"]
             else:
@@ -459,7 +540,7 @@ class CompanionManager:
                     city,
                 )
 
-        # 同步更新 MySQL
+        # 同步更新 PostgreSQL
         with get_db() as db:
             row = db.query(CompanionORM).filter(CompanionORM.id == companion_id).first()
             if row:

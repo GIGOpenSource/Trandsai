@@ -1,9 +1,10 @@
 # 后端多语言字典 —— 供 core/config.py 及各服务模块导入使用
+from typing import Optional
 
 _SUPPORTED_UI_LANGS = frozenset({"zh", "en", "ja", "ko", "pt", "es", "id"})
 
 
-def normalize_ui_language(lang: str | None) -> str:
+def normalize_ui_language(lang: Optional[str]) -> str:
     """将浏览器 / i18next 传入值规范为 zh|en|ja|ko|pt|es|id。
     - zh-CN / zh-Hans → zh；en-US → en
     - 不识别的语种回退 en（与客户端 fallbackLng 一致），避免误入中文提示词。

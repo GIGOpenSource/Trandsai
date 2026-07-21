@@ -16,6 +16,7 @@ from api.auth import _hash_password as _hash
 from core.database import AgentConfigORM, ButtonClickORM, CompanionAgentConfigORM, CompanionORM, CompanionStateORM, ConfigGroupORM, FeedbackMessageORM, FeedbackThreadORM, MomentORM, PageViewORM, ShortTermMessageORM, SystemNotificationORM, UserCompanionStateORM, UserORM, get_db, serialize_datetime
 from core.state import get_companion_manager
 from services.agent import test_llm_connection
+from services.agent_utils import invalidate_agent_config_cache
 from services.analytics_stats import compute_dau_series, compute_retention_cohorts
 from services.knowledge_base import knowledge_base
 from services.memory import get_embedding_status
@@ -692,6 +693,7 @@ async def admin_put_agent_config(data: dict, _token: str = Depends(admin_auth_re
             row.config_json = cfg
         else:
             db.add(AgentConfigORM(config_json=data))
+    invalidate_agent_config_cache()
     return {"ok": True}
 
 
@@ -718,6 +720,7 @@ async def admin_put_companion_agent_config(companion_id: str, data: dict, _token
             row.config_json = cfg
         else:
             db.add(CompanionAgentConfigORM(companion_id=companion_id, config_json=data))
+    invalidate_agent_config_cache(companion_id)
     return {"ok": True}
 
 
@@ -1203,8 +1206,13 @@ async def _batch_generate_companions_core(data: dict):
             loop = asyncio.get_event_loop()
             def _sync_llm_invoke():
                 llm = get_llm(temperature=0.9, max_tokens=4096)
-                resp = llm.invoke([SystemMessage(content=prompt)])
-                return resp
+                from services.llm.client import llm_invoke
+                return llm_invoke(
+                    llm,
+                    [SystemMessage(content=prompt)],
+                    node="admin_batch_generate",
+                    max_tokens=4096,
+                )
 
             resp = await loop.run_in_executor(None, _sync_llm_invoke)
             text = resp.content if hasattr(resp, "content") else str(resp)

@@ -29,12 +29,15 @@ from api.feedback import router as feedback_router
 from api.moments import router as moments_router
 from api.posts import router as posts_router
 
+from core.middleware import TimingMiddleware
 from core.config import ADMIN_DIR, BASE_DIR, DIST_DIR, MEMORY_ROOT
-from core.database import AgentConfigORM, ConfigGroupORM, get_db, init_db
+from core.database import AgentConfigORM, ConfigGroupORM, get_db, init_db, validate_production_config
+from core.health import build_health_payload
 from core.state import get_companion_manager, set_companion_manager
 from services.companion_manager import CompanionManager
 from services.knowledge_base import import_cultural_knowledge
 from services.memory import start_embedding_download
+from services.chat_persist import start_chat_persist_worker, stop_chat_persist_worker
 
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 logger = logging.getLogger(__name__)
@@ -92,6 +95,8 @@ async def lifespan(app: FastAPI):
     admin_password = (os.getenv("ADMIN_PASSWORD") or "").strip()
     if not admin_password or admin_password == "admin123":
         raise RuntimeError("ADMIN_PASSWORD is missing or insecure; please set a strong password")
+
+    validate_production_config()
 
     os.makedirs(MEMORY_ROOT, exist_ok=True)
     init_db()
@@ -208,9 +213,12 @@ async def lifespan(app: FastAPI):
 
     warmup_task = asyncio.create_task(_warmup_generate_moments())
 
+    start_chat_persist_worker()
+
     # 启动朋友圈定时生成后台任务
     scheduler_task = asyncio.create_task(_moment_scheduler())
     yield
+    stop_chat_persist_worker()
     scheduler_task.cancel()
     knowledge_task.cancel()
     warmup_task.cancel()
@@ -229,6 +237,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="trandsai", lifespan=lifespan)
+app.add_middleware(TimingMiddleware)
 
 
 @app.exception_handler(HTTPException)
@@ -290,6 +299,11 @@ async def admin_redirect():
 # 管理后台静态资源（含 HTML/CSS/JS）
 if ADMIN_DIR.exists():
     app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
+
+
+@app.get("/api/health")
+async def api_health():
+    return build_health_payload()
 
 
 @app.get("/")

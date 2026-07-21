@@ -22,6 +22,23 @@ DATABASE_URL = os.getenv(
 logger.info("使用数据库路径: %s (绝对路径确保部署一致性)", default_db_path)
 
 _is_sqlite = DATABASE_URL.startswith("sqlite")
+_is_mysql = "mysql" in DATABASE_URL.lower()
+_is_postgres = DATABASE_URL.startswith("postgresql") or DATABASE_URL.startswith("postgres")
+
+
+def validate_production_config() -> None:
+    """Production must use PostgreSQL + Redis; block SQLite/MySQL misconfiguration."""
+    env = (os.getenv("APP_ENV") or os.getenv("ENV") or "").strip().lower()
+    if env not in ("production", "prod"):
+        return
+    if _is_sqlite:
+        raise RuntimeError("SQLite is not allowed in production; set DATABASE_URL to PostgreSQL")
+    if _is_mysql:
+        raise RuntimeError("MySQL is deprecated; use PostgreSQL DATABASE_URL in production")
+    if not _is_postgres:
+        raise RuntimeError("Production DATABASE_URL must be PostgreSQL")
+    if not (os.getenv("REDIS_URL") or "").strip():
+        raise RuntimeError("REDIS_URL is required in production")
 
 if _is_sqlite:
     # SQLite：本地文件，无需连接池保活，支持多线程访问
@@ -30,12 +47,7 @@ if _is_sqlite:
         connect_args={"check_same_thread": False},
     )
 else:
-    # MySQL：使用连接池保活和回收
-#     engine = create_engine(DATABASE_URL, pool_pre_ping=True, pool_recycle=3600)
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-# Base = declarative_base()
-
-    # PostgreSQL/MySQL：使用连接池保活和回收
+    # PostgreSQL：连接池保活和回收
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,
@@ -397,6 +409,7 @@ def _alter_column_length(table_name: str, column_name: str, new_type: str):
 
 
 def init_db():
+    validate_production_config()
     Base.metadata.create_all(bind=engine)
     # 兼容：为已存在的 companion_states 表添加进化字段
     _ensure_column("companion_states", "evolved_personality", "TEXT")

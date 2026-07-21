@@ -1,6 +1,8 @@
 import logging
+import os
 import random
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from typing import Any, Dict, List, Optional, Tuple
@@ -58,17 +60,34 @@ def strip_outer_markdown_fence(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-# ===== 配置读取 =====
+# ===== 配置读取（TTL 缓存）=====
+_AGENT_CONFIG_CACHE: Dict[str, tuple] = {}
+_AGENT_CONFIG_TTL = float(os.getenv("AGENT_CONFIG_CACHE_TTL", "300"))
+
+
+def invalidate_agent_config_cache(companion_id: str = None) -> None:
+    """管理端更新配置时调用；companion_id=None 清空全部。"""
+    if companion_id is None:
+        _AGENT_CONFIG_CACHE.clear()
+    else:
+        _AGENT_CONFIG_CACHE.pop(companion_id, None)
+        _AGENT_CONFIG_CACHE.pop("__global__", None)
+
+
 def _get_agent_config(companion_id: str = None) -> dict:
-    """从数据库读取 Agent 配置。
-    如果提供了 companion_id，优先读取智能体级配置，没有则回退到全局配置。
-    如果全局 Agent 配置组被禁用，返回空字典（使用默认配置）。
-    """
+    """从数据库读取 Agent 配置（带 TTL 内存缓存）。"""
+    cache_key = companion_id or "__global__"
+    now = time.time()
+    cached = _AGENT_CONFIG_CACHE.get(cache_key)
+    if cached and now - cached[1] < _AGENT_CONFIG_TTL:
+        return cached[0]
+
+    result: dict = {}
     try:
         with get_db() as db:
-            # 检查 Agent 配置组是否启用
             group = db.query(ConfigGroupORM).filter(ConfigGroupORM.key == "agent").first()
             if group and not group.enabled:
+                _AGENT_CONFIG_CACHE[cache_key] = ({}, now)
                 return {}
 
             if companion_id:
@@ -76,13 +95,18 @@ def _get_agent_config(companion_id: str = None) -> dict:
                     CompanionAgentConfigORM.companion_id == companion_id
                 ).first()
                 if row and row.config_json:
-                    return dict(row.config_json)
-            row = db.query(AgentConfigORM).first()
-            if row and row.config_json:
-                return dict(row.config_json)
+                    result = dict(row.config_json)
+            if not result:
+                row = db.query(AgentConfigORM).first()
+                if row and row.config_json:
+                    result = dict(row.config_json)
     except Exception as e:
         logger.warning("Load agent config failed, fallback to defaults: %s", e)
-    return {}
+        if cached:
+            return cached[0]
+
+    _AGENT_CONFIG_CACHE[cache_key] = (result, now)
+    return result
 
 
 # ===== humanize 后处理：按语言让文字像真人 =====
@@ -498,7 +522,39 @@ _PAREN_THINKING_FORMAT_RULE = {
 }
 
 
-def build_system_prompt(profile: dict, language: str = "zh", evolved: Optional[dict] = None, user_gender: str = "", turns: int = 0) -> str:
+def _build_core_prompt(
+    profile: dict,
+    language: str,
+    evolved: Optional[dict],
+    user_gender: str,
+    turns: int,
+) -> str:
+    """Compact system prompt for internal reasoning calls (~800 tokens)."""
+    lang = normalize_ui_language(language)
+    if lang not in _SYSTEM_PROMPTS:
+        lang = "zh"
+    name = profile.get("name", "Companion")
+    personality = profile.get("personality", "")[:300]
+    speech = profile.get("speech_style", "")[:200]
+    if evolved and evolved.get("personality"):
+        personality = f"{personality}\n{evolved['personality'][:150]}"
+    return (
+        f"你是{name}。性格：{personality}\n口癖/说话风格：{speech}\n"
+        f"当前对话轮次：{turns}。请用{lang}进行内心分析，输出简洁 JSON。"
+    )
+
+
+def build_system_prompt(
+    profile: dict,
+    language: str = "zh",
+    evolved: Optional[dict] = None,
+    user_gender: str = "",
+    turns: int = 0,
+    tier: str = "full",
+) -> str:
+    if tier == "core":
+        return _build_core_prompt(profile, language, evolved, user_gender, turns)
+
     lang = normalize_ui_language(language)
     if lang not in _SYSTEM_PROMPTS:
         lang = "zh"
@@ -552,7 +608,7 @@ def build_system_prompt(profile: dict, language: str = "zh", evolved: Optional[d
         daily_routine=profile.get("daily_routine", ""),
         favorite_things=profile.get("favorite_things", ""),
         mbti=profile.get("mbti", ""),
-        life_story=profile.get("life_story", ""),
+        life_story=(profile.get("life_story", "") or "")[:400],
         cultural_values=profile.get("cultural_values", ""),
         gender_perspective=profile.get("gender_perspective", ""),
         gender_role=gender_role,

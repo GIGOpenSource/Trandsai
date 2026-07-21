@@ -140,23 +140,11 @@ def search_posts(
             .offset(offset)
             .all()
         )
+        post_ids = [p.id for p in posts]
+        liked_ids = _batch_liked_ids(db, post_ids, user_id, device_id)
+
         result = []
         for p in posts:
-            liked = False
-            if user_id:
-                liked = (
-                    db.query(PostLikeORM)
-                    .filter_by(post_id=p.id, user_id=user_id)
-                    .first()
-                    is not None
-                )
-            elif device_id:
-                liked = (
-                    db.query(PostLikeORM)
-                    .filter_by(post_id=p.id, device_id=device_id)
-                    .first()
-                    is not None
-                )
             result.append({
                 "id": p.id,
                 "user_id": p.user_id,
@@ -168,7 +156,7 @@ def search_posts(
                 "category": p.category or "",
                 "likes_count": p.likes_count,
                 "comments_count": p.comments_count,
-                "liked": liked,
+                "liked": p.id in liked_ids,
                 "created_at": serialize_datetime(p.created_at),
             })
         return result

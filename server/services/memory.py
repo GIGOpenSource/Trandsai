@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional
 
 import chromadb
 from chromadb.config import Settings
+
+from core.chroma_client import get_persistent_client
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from openai import OpenAI
 from sqlalchemy import desc
@@ -18,6 +20,15 @@ from core.database import (
     RelationSummaryORM,
     ShortTermMessageORM,
     get_db,
+)
+from core.chat_cache import (
+    append_message as redis_append_message,
+    bridge_enabled,
+    clear as redis_clear_messages,
+    get_last_assistant_content as redis_get_last_assistant,
+    get_recent as redis_get_recent,
+    get_total_count as redis_get_total_count,
+    warm_from_db as redis_warm_from_db,
 )
 
 logger = logging.getLogger(__name__)
@@ -174,23 +185,76 @@ def get_embedding(text: str) -> Optional[List[float]]:
         return None
 
 
-# ===== ShortTermMemory (MySQL) =====
+# ===== ShortTermMemory (Redis 热路径 + PostgreSQL 异步持久化) =====
+_RING_BUFFER_SIZE = 60
+_ring_buffers: Dict[str, List[Dict]] = {}
+_ring_buffer_lock = threading.Lock()
+
+
 class ShortTermMemory:
-    """短期记忆：保留最近 15 轮原始对话（每轮含 user + assistant，最多 30 条消息）"""
+    """短期记忆：Redis 桥接优先，PostgreSQL 异步落库；无 Redis 时同步写 PG。"""
 
     def __init__(self, companion_id: str):
         self.companion_id = companion_id
 
-    def add(self, role: str, content: str):
+    def _append_buffer(self, role: str, content: str, ts: Optional[datetime] = None, msg_id: Optional[int] = None):
+        ts = ts or datetime.now(timezone.utc)
+        entry = {
+            "id": msg_id,
+            "role": role,
+            "content": content,
+            "timestamp": ts.isoformat() if ts.tzinfo else ts.replace(tzinfo=timezone.utc).isoformat(),
+        }
+        with _ring_buffer_lock:
+            buf = _ring_buffers.setdefault(self.companion_id, [])
+            buf.append(entry)
+            if len(buf) > _RING_BUFFER_SIZE:
+                del buf[: len(buf) - _RING_BUFFER_SIZE]
+
+    def _pg_add(self, role: str, content: str):
         with get_db() as db:
-            db.add(ShortTermMessageORM(
+            row = ShortTermMessageORM(
                 companion_id=self.companion_id,
                 role=role,
                 content=content,
-            ))
+            )
+            db.add(row)
+            db.flush()
+            return row.created_at, row.id
+
+    def add(self, role: str, content: str):
+        if bridge_enabled():
+            try:
+                entry = redis_append_message(self.companion_id, role, content)
+                ts = None
+                try:
+                    ts = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+                except (TypeError, ValueError, KeyError):
+                    ts = datetime.now(timezone.utc)
+                self._append_buffer(role, content, ts, entry.get("id"))
+                return
+            except Exception as e:
+                logger.warning(
+                    "Redis chat bridge failed for %s, fallback to PG: %s",
+                    self.companion_id,
+                    e,
+                )
+
+        created, msg_id = self._pg_add(role, content)
+        self._append_buffer(role, content, created, msg_id)
 
     def get_last_assistant_content(self) -> Optional[str]:
-        """最近一条 AI 气泡的原文，用于发送前去重。"""
+        if bridge_enabled():
+            cached = redis_get_last_assistant(self.companion_id)
+            if cached:
+                return cached
+
+        with _ring_buffer_lock:
+            buf = _ring_buffers.get(self.companion_id, [])
+            for item in reversed(buf):
+                if item.get("role") == "assistant" and (item.get("content") or "").strip():
+                    return item["content"]
+
         with get_db() as db:
             row = (
                 db.query(ShortTermMessageORM)
@@ -206,7 +270,7 @@ class ShortTermMemory:
                 return None
             return row.content
 
-    def get_recent(self, n: int = 60, offset: int = 0) -> List[Dict]:
+    def _pg_get_recent(self, n: int, offset: int) -> List[Dict]:
         with get_db() as db:
             msgs = (
                 db.query(ShortTermMessageORM)
@@ -216,6 +280,7 @@ class ShortTermMemory:
                 .limit(n)
                 .all()
             )
+
             def _fmt_ts(ts):
                 if not ts:
                     return datetime.now(timezone.utc).isoformat()
@@ -224,9 +289,56 @@ class ShortTermMemory:
                 return ts.isoformat()
 
             return [
-                {"role": m.role, "content": m.content, "timestamp": _fmt_ts(m.created_at)}
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "timestamp": _fmt_ts(m.created_at),
+                }
                 for m in reversed(msgs)
             ]
+
+    def get_recent(self, n: int = 60, offset: int = 0) -> List[Dict]:
+        if bridge_enabled() and offset == 0:
+            cached = redis_get_recent(self.companion_id, n, offset)
+            if cached is not None:
+                if cached:
+                    with _ring_buffer_lock:
+                        _ring_buffers[self.companion_id] = cached[-_RING_BUFFER_SIZE:]
+                    return cached
+                pg_rows = self._pg_get_recent(n, offset)
+                if pg_rows:
+                    redis_warm_from_db(self.companion_id, pg_rows)
+                    with _ring_buffer_lock:
+                        _ring_buffers[self.companion_id] = pg_rows[-_RING_BUFFER_SIZE:]
+                return pg_rows
+
+        if offset == 0:
+            with _ring_buffer_lock:
+                buf = _ring_buffers.get(self.companion_id, [])
+                if buf:
+                    return list(buf[-n:]) if len(buf) > n else list(buf)
+
+        return self._pg_get_recent(n, offset)
+
+    def warm_buffer(self):
+        if bridge_enabled():
+            cached = redis_get_recent(self.companion_id, _RING_BUFFER_SIZE, 0)
+            if cached:
+                with _ring_buffer_lock:
+                    _ring_buffers[self.companion_id] = cached[-_RING_BUFFER_SIZE:]
+                return
+
+        with _ring_buffer_lock:
+            if _ring_buffers.get(self.companion_id):
+                return
+        recent = self.get_recent(_RING_BUFFER_SIZE, offset=0)
+        if not recent:
+            return
+        if bridge_enabled():
+            redis_warm_from_db(self.companion_id, recent)
+        with _ring_buffer_lock:
+            _ring_buffers[self.companion_id] = recent[-_RING_BUFFER_SIZE:]
 
     def get_recent_turns(self, max_turns: int = 20) -> List[Dict]:
         """按轮次获取最近对话，合并同一轮的拆分消息"""
@@ -272,7 +384,10 @@ class ShortTermMemory:
             return count // 2
 
     def get_total_count(self) -> int:
-        """返回短期记忆的实际总记录数（含分段消息）"""
+        if bridge_enabled():
+            cached = redis_get_total_count(self.companion_id)
+            if cached is not None and cached > 0:
+                return cached
         with get_db() as db:
             return (
                 db.query(ShortTermMessageORM)
@@ -281,6 +396,10 @@ class ShortTermMemory:
             )
 
     def clear(self):
+        if bridge_enabled():
+            redis_clear_messages(self.companion_id)
+        with _ring_buffer_lock:
+            _ring_buffers.pop(self.companion_id, None)
         with get_db() as db:
             db.query(ShortTermMessageORM).filter(
                 ShortTermMessageORM.companion_id == self.companion_id
@@ -295,10 +414,7 @@ class EpisodicMemory:
         self.companion_id = companion_id
         self.persist_dir = os.path.join(companion_dir, "chroma")
         os.makedirs(self.persist_dir, exist_ok=True)
-        self.client = chromadb.PersistentClient(
-            path=self.persist_dir,
-            settings=Settings(anonymized_telemetry=False),
-        )
+        self.client = get_persistent_client(self.persist_dir)
         self.collection = self.client.get_or_create_collection(
             name=f"companion_{companion_id}",
             metadata={"hnsw:space": "cosine"},
@@ -341,9 +457,9 @@ class EpisodicMemory:
         self.add_episode(combined, {"type": "dialogue_turn"})
 
 
-# ===== FactMemory (MySQL) =====
+# ===== FactMemory (PostgreSQL) =====
 class FactMemory:
-    """结构化事实记忆：MySQL 存储"""
+    """结构化事实记忆：PostgreSQL 存储"""
 
     def __init__(self, companion_id: str):
         self.companion_id = companion_id
@@ -377,7 +493,7 @@ class FactMemory:
         return "\n".join(f"- {item}" for item in items) if items else "（暂无已知事实）"
 
 
-# ===== RelationSummary (MySQL) =====
+# ===== RelationSummary (PostgreSQL) =====
 class RelationSummary:
     """关系摘要：每 8 轮自动更新一句温馨摘要"""
 
@@ -483,9 +599,30 @@ class CompanionMemory:
             "summary": self.summary.get_summary(),
         }
 
-    def build_prompt_context(self, query: str = "", max_chars: int = 3500) -> str:
-        """构建上下文提示，按优先级放入内容并控制总长度"""
-        ctx = self.get_context(query)
+    def build_prompt_context(
+        self,
+        query: str = "",
+        max_chars: int = 3500,
+        tier: str = "full",
+    ) -> str:
+        """构建上下文提示，按 tier 控制长度（S-05）。"""
+        tier = (tier or "full").lower()
+        if tier == "compact":
+            max_chars = min(max_chars, 800)
+            max_facts = 3
+            max_turns = 8
+            episode_limit = 2
+        else:
+            max_chars = min(max_chars, 1800) if max_chars > 2000 else max_chars
+            max_facts = 5
+            max_turns = 12
+            episode_limit = 3
+
+        need_vector = bool(query) and (
+            len(query) > 20
+            or any(k in query for k in ("记得", "以前", "那次", "还记得", "remember", "before"))
+        )
+        ctx = self.get_context(query if need_vector else "")
         parts = []
 
         # === 1. 关系摘要（优先级最高，固定保留）===
@@ -502,7 +639,7 @@ class CompanionMemory:
                 if f_norm and f_norm not in seen:
                     seen.add(f_norm)
                     unique_facts.append(f_norm)
-                    if len(unique_facts) >= 10:
+                    if len(unique_facts) >= max_facts:
                         break
             unique_facts.reverse()
             if unique_facts:
@@ -516,14 +653,14 @@ class CompanionMemory:
             filtered = [ep for ep in episodes if ep.get("distance", 1.0) < 0.4]
             if filtered:
                 ep_lines = []
-                for ep in filtered[:3]:
+                for ep in filtered[:episode_limit]:
                     text = ep["text"][:120]  # 截断到120字
                     ep_lines.append(f"- {text}")
                 ep_text = "【相关往事】\n" + "\n".join(ep_lines)
                 parts.append((ep_text, 60))
 
         # === 4. 最近对话（按轮合并，动态长度控制）===
-        recent_turns = self.short_term.get_recent_turns(max_turns=20)
+        recent_turns = self.short_term.get_recent_turns(max_turns=max_turns)
         if recent_turns:
             dialogue_lines = ["【最近对话】"]
             for msg in recent_turns:

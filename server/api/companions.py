@@ -2,8 +2,10 @@ import asyncio
 import functools
 import json
 import logging
+import os
 import random
 import re
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -12,7 +14,12 @@ from starlette.websockets import WebSocketState
 from typing import List, Optional, Tuple
 
 from api.auth import verify_user_token
+from core.concurrency import agent_semaphore
+from core.agent_queue import AgentJob, enqueue_agent_job, new_job_id, queue_enabled, wait_agent_result
 from core.database import UserORM, get_db
+from core.executor import AGENT_POOL
+from core.rate_limit import check_chat_rate_limit
+from core.rest_async import run_rest
 from core.config import (
     _AGENT_TIMEOUT_MESSAGE,
     _DUPLICATE_USER_MESSAGE,
@@ -22,9 +29,10 @@ from core.config import (
     split_response,
 )
 from core.state import get_companion_manager, get_session, set_session
-from services.companion_manager import hydrate_user_affection_turns
-from services.agent import build_system_prompt, get_llm, run_agent, get_content_restriction
-from services.agent_utils import build_dialogue_time_context
+from services.agent_utils import build_dialogue_time_context, build_system_prompt, get_content_restriction
+from services.agent_runner import run_agent, run_memory_update_async
+from services.agent import get_llm
+from services.llm.client import llm_invoke
 from services.culture_data import get_cultural_context
 from services.memory import normalize_message_text_for_dedup
 from services.image_generation import generate_avatar_prompt, generate_image_with_cache
@@ -37,12 +45,22 @@ from core.i18n import (
     _WS_COMPANION_NOT_FOUND,
 )
 from services.async_tasks import start_avatar_generation
+from services.companion_manager import hydrate_user_affection_turns
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 # 单次从 WS 队列合并处理的用户消息条数上限：避免一次合并过多导致模型/记忆语义「串」、且 empty() 在竞态下不可靠
 _WS_BURST_MAX_MESSAGES = 10
+
+_DELIVERY_DELAY_FACTOR = float(os.getenv("DELIVERY_DELAY_FACTOR", "0.6"))
+
+_AGENT_BUSY_MESSAGE = {
+    "zh": "当前咨询人数较多，请稍后再试～",
+    "en": "We're busy right now — please try again in a moment.",
+    "ja": "現在混雑しています。少し待ってからもう一度お試しください。",
+    "ko": "지금 상담이 많습니다. 잠시 후 다시 시도해 주세요.",
+}
 
 # 带括号「思考」时，仅约本概率的轮次向客户端发送 💭 toast（约每 10 次用户-AI 交互 1～2 次展示）
 _THINK_TOAST_UI_PROBABILITY = 0.15
@@ -267,8 +285,9 @@ async def _deliver_assistant_content(
                 else:
                     seg_delay = max(
                         0.16,
-                        min(2.15, 0.28 + len(sub_clean) * 0.053 + random.uniform(-0.1, 0.4)),
+                        min(0.9, 0.28 + len(sub_clean) * 0.053 + random.uniform(-0.1, 0.4)),
                     )
+                seg_delay *= _DELIVERY_DELAY_FACTOR
                 await asyncio.sleep(seg_delay)
                 if await _interrupted():
                     return sent_segments, True
@@ -511,7 +530,10 @@ async def _send_proactive_message(websocket: WebSocket, companion, lang: str, co
         prompt = _build_proactive_prompt(companion, lang, time_ctx)
         llm = get_llm()
         loop = asyncio.get_event_loop()
-        resp = await loop.run_in_executor(None, lambda: llm.invoke([SystemMessage(content=prompt)]))
+        resp = await loop.run_in_executor(
+            None,
+            lambda: llm_invoke(llm, [SystemMessage(content=prompt)], node="proactive"),
+        )
         text = resp.content.strip()
 
         await asyncio.sleep(random.uniform(1.0, 2.5))
@@ -636,7 +658,7 @@ async def api_generate_persona(data: dict):
 
     try:
         llm = get_llm(temperature=0.9, max_tokens=4096)
-        resp = llm.invoke([SystemMessage(content=prompt)])
+        resp = llm_invoke(llm, [SystemMessage(content=prompt)], node="persona_generate", max_tokens=4096)
         text = resp.content.strip() if hasattr(resp, "content") else str(resp)
         result = _extract_json(text)
         return result
@@ -669,9 +691,8 @@ async def api_list_companions(x_token: Optional[str] = Header(None, alias="x-tok
     """获取当前用户的 companions 列表。必须登录，否则返回空列表。"""
     uid = verify_user_token(x_token) if x_token else None
     if not uid:
-        # 未登录返回空列表，不泄露任何数据
         return []
-    return get_companion_manager().list_all(user_id=uid)
+    return await run_rest(get_companion_manager().list_all, user_id=uid)
 
 @router.get("/companions/{companion_id}")
 async def api_get_companion(companion_id: str, user_id: int = Depends(require_login_user)):
@@ -693,24 +714,25 @@ async def api_get_messages(
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
     _assert_companion_user_access(companion, user_id)
-    messages = companion.memory.short_term.get_recent(limit, offset)
-    return {"messages": messages, "total": companion.memory.short_term.get_total_count()}
+
+    def _load():
+        messages = companion.memory.short_term.get_recent(limit, offset)
+        return {"messages": messages, "total": companion.memory.short_term.get_total_count()}
+
+    return await run_rest(_load)
 
 
 @router.post("/companions/{companion_id}/generate-avatar")
 async def api_generate_avatar(companion_id: str, user_id: int = Depends(require_login_user)):
-    """基于人设 AI 生成动漫风格头像"""
+    """基于人设 AI 生成动漫风格头像（异步，立即返回）"""
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
     _assert_companion_user_access(companion, user_id)
 
-    prompt = generate_avatar_prompt(companion.profile.model_dump())
-    image_url = generate_image_with_cache(prompt, style="portrait", width=512, height=512)
-
-    # 更新 avatar_url
-    get_companion_manager().update(companion_id, {"avatar_url": image_url})
-    return {"ok": True, "avatar_url": image_url}
+    get_companion_manager().update(companion_id, {"avatar_url": "__GENERATING__"})
+    start_avatar_generation(companion_id, companion.profile.model_dump())
+    return {"ok": True, "status": "generating", "avatar_url": "__GENERATING__"}
 
 
 @router.delete("/companions/{companion_id}")
@@ -788,6 +810,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
     session_meta.pop("last_disconnect", None)
     await set_session(companion_id, session_meta)
     user_lang = session_meta.get("lang") or "zh"
+    connection_id = str(uuid.uuid4())
 
     # 消息去重：记录最近收到的消息内容和时间戳
     _recent_user_messages: list[dict] = []
@@ -893,6 +916,14 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             # 如果有未发送完的AI回复，先保存已发送的部分（如果有）
             # 这里简化处理：已发送的内容已经展示给用户，新的回复会覆盖话题
 
+            if not check_chat_rate_limit(user_id):
+                busy_txt = _AGENT_BUSY_MESSAGE.get(lk_co, _AGENT_BUSY_MESSAGE["zh"])
+                try:
+                    await websocket.send_text(json.dumps({"type": "error", "text": busy_txt}))
+                except Exception:
+                    pass
+                continue
+
             for line in burst_parts:
                 companion.memory.add_user_message(line)
 
@@ -911,7 +942,11 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             except Exception:
                 continue
 
-            memory_text = companion.memory.build_prompt_context(query=combined_user_plain)
+            memory_tier = os.getenv("AGENT_MEMORY_TIER", "full")
+            memory_text = companion.memory.build_prompt_context(
+                query=combined_user_plain,
+                tier=memory_tier,
+            )
             language = normalize_ui_language(
                 burst_head.get("lang") or get_session(companion_id).get("lang") or user_lang or "zh"
             )
@@ -949,44 +984,109 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             )
             user_gender = burst_head.get("user_gender", "")
             delivery_mood = _burst_mood_from_user_text(combined_user_plain)
+            summary_due = companion.memory.summary.should_update()
 
-            async def _run_agent_coro():
-                return await asyncio.wrap_future(
-                    loop.run_in_executor(
-                        None,
-                        functools.partial(
-                            run_agent,
-                            user_text_for_agent,
-                            companion.profile.model_dump(),
-                            companion.state.model_dump(),
-                            memory_text,
-                            "",
-                            language,
-                            current_time,
-                            user_gender,
-                        ),
-                    )
+            result = None
+            use_queue = queue_enabled()
+
+            if use_queue:
+                job = AgentJob(
+                    job_id=new_job_id(),
+                    connection_id=connection_id,
+                    companion_id=companion_id,
+                    user_id=user_id,
+                    user_text_for_agent=user_text_for_agent,
+                    combined_user_plain=combined_user_plain,
+                    profile=companion.profile.model_dump(),
+                    companion_state=companion.state.model_dump(),
+                    memory_text=memory_text,
+                    language=language,
+                    current_time=current_time,
+                    user_gender=user_gender,
+                    summary_due=summary_due,
+                    priority=int(os.getenv("PAID_USER_PRIORITY", "0")),
                 )
+                enqueued = await enqueue_agent_job(job)
+                if enqueued:
+                    pending = loop.create_future()
+                    keep_task = asyncio.create_task(
+                        _keepalive_during_agent(websocket, pending, language)
+                    )
+                    try:
+                        payload = await wait_agent_result(connection_id, job.job_id)
+                        if not payload or not payload.get("ok"):
+                            err_txt = _AGENT_TIMEOUT_MESSAGE.get(language, _AGENT_TIMEOUT_MESSAGE["zh"])
+                            try:
+                                await websocket.send_text(json.dumps({"type": "error", "text": err_txt}))
+                            except Exception:
+                                pass
+                            continue
+                        result = payload.get("result")
+                    finally:
+                        if not pending.done():
+                            pending.cancel()
+                        keep_task.cancel()
+                        try:
+                            await keep_task
+                        except asyncio.CancelledError:
+                            pass
+                else:
+                    use_queue = False
 
-            agent_task = asyncio.create_task(_run_agent_coro())
-            keep_task = asyncio.create_task(
-                _keepalive_during_agent(websocket, agent_task, language)
-            )
-            try:
-                result = await asyncio.wait_for(asyncio.shield(agent_task), timeout=120.0)
-            except asyncio.TimeoutError:
+            if not use_queue:
+                async def _run_agent_coro():
+                    return await asyncio.wrap_future(
+                        loop.run_in_executor(
+                            AGENT_POOL,
+                            functools.partial(
+                                run_agent,
+                                user_text_for_agent,
+                                companion.profile.model_dump(),
+                                companion.state.model_dump(),
+                                memory_text,
+                                "",
+                                language,
+                                current_time,
+                                user_gender,
+                                summary_due,
+                                True,
+                            ),
+                        )
+                    )
+
                 try:
-                    err_txt = _AGENT_TIMEOUT_MESSAGE.get(language, _AGENT_TIMEOUT_MESSAGE["zh"])
-                    await websocket.send_text(json.dumps({"type": "error", "text": err_txt}))
-                except Exception:
-                    pass
+                    await asyncio.wait_for(agent_semaphore.acquire(), timeout=0.05)
+                except asyncio.TimeoutError:
+                    busy_txt = _AGENT_BUSY_MESSAGE.get(language, _AGENT_BUSY_MESSAGE["zh"])
+                    try:
+                        await websocket.send_text(json.dumps({"type": "error", "text": busy_txt}))
+                    except Exception:
+                        pass
+                    continue
+
+                agent_task = asyncio.create_task(_run_agent_coro())
+                keep_task = asyncio.create_task(
+                    _keepalive_during_agent(websocket, agent_task, language)
+                )
+                try:
+                    result = await asyncio.wait_for(asyncio.shield(agent_task), timeout=120.0)
+                except asyncio.TimeoutError:
+                    try:
+                        err_txt = _AGENT_TIMEOUT_MESSAGE.get(language, _AGENT_TIMEOUT_MESSAGE["zh"])
+                        await websocket.send_text(json.dumps({"type": "error", "text": err_txt}))
+                    except Exception:
+                        pass
+                    continue
+                finally:
+                    agent_semaphore.release()
+                    keep_task.cancel()
+                    try:
+                        await keep_task
+                    except asyncio.CancelledError:
+                        pass
+
+            if not result:
                 continue
-            finally:
-                keep_task.cancel()
-                try:
-                    await keep_task
-                except asyncio.CancelledError:
-                    pass
 
             response_text = result["response"]
             response_len = len(response_text)
@@ -999,10 +1099,10 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
                     + random.uniform(0, 0.6)
                 )
             else:
-                pre_delay = min(2.35, max(0.1, response_len * 0.016) + random.uniform(0, 0.7))
+                pre_delay = min(1.5, min(2.35, max(0.1, response_len * 0.016) + random.uniform(0, 0.7)))
                 if response_len > 100:
-                    pre_delay += random.uniform(0, 0.4)
-                pre_delay = min(3.6, pre_delay)
+                    pre_delay += random.uniform(0, 0.4) * _DELIVERY_DELAY_FACTOR
+                pre_delay = min(1.5, pre_delay * _DELIVERY_DELAY_FACTOR)
             await asyncio.sleep(pre_delay)
 
             aff = float(getattr(companion.state, "affection", 0) or 0)
@@ -1018,25 +1118,24 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
                 delivery_mood=delivery_mood,
             )
 
+            memory_snapshot = result.get("memory_snapshot")
+
             if was_interrupted:
-                # 用户中途回复了新消息，已发送的部分已逐段保存
-                # 即使被打断，仍更新已发送内容对应的状态（保持 AI 状态不 stale）
                 if sent_segments:
                     companion.state.mood = result["mood"]
                     companion.state.affection = result["affection"]
                     companion.state.turns += 1
-                    if result.get("new_facts"):
-                        companion.memory.facts.add_facts(result["new_facts"])
-                    if companion.memory.summary.should_update() and result.get("new_summary"):
-                        companion.memory.summary.update(result["new_summary"])
-                        companion.state.summary = result["new_summary"]
-                    else:
-                        companion.state.summary = companion.memory.summary.get_summary()
+                    if not memory_snapshot:
+                        if result.get("new_facts"):
+                            companion.memory.facts.add_facts(result["new_facts"])
+                        if companion.memory.summary.should_update() and result.get("new_summary"):
+                            companion.memory.summary.update(result["new_summary"])
+                            companion.state.summary = result["new_summary"]
+                        else:
+                            companion.state.summary = companion.memory.summary.get_summary()
                     companion.save_state(user_id=user_id)
                 continue
 
-            # 完整发送后，保存回合和状态（逐段已存入 short_term）
-            # 使用实际发送给用户的去括号内容保存记忆，保持与用户体验一致
             actual_response = "\n\n".join(sent_segments)
             companion.memory.commit_turn(combined_user_plain, actual_response)
 
@@ -1044,23 +1143,57 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             companion.state.affection = result["affection"]
             companion.state.turns += 1
 
-            if result.get("evolved_personality"):
-                companion.state.evolved_personality = result["evolved_personality"]
-            if result.get("evolved_background"):
-                companion.state.evolved_background = result["evolved_background"]
-            if result.get("evolved_speech_style"):
-                companion.state.evolved_speech_style = result["evolved_speech_style"]
+            if memory_snapshot:
+                companion.save_state(user_id=user_id)
+                snapshot_for_bg = {
+                    **memory_snapshot,
+                    "companion_state": {
+                        **memory_snapshot["companion_state"],
+                        "turns": companion.state.turns,
+                        "mood": companion.state.mood,
+                        "affection": companion.state.affection,
+                    },
+                }
 
-            if result.get("new_facts"):
-                companion.memory.facts.add_facts(result["new_facts"])
+                async def _bg_memory(snap=snapshot_for_bg):
+                    try:
+                        mem = await run_memory_update_async(snap)
+                        if mem.get("new_facts"):
+                            companion.memory.facts.add_facts(mem["new_facts"])
+                        if mem.get("new_summary") and companion.memory.summary.should_update():
+                            companion.memory.summary.update(mem["new_summary"])
+                            companion.state.summary = mem["new_summary"]
+                        else:
+                            companion.state.summary = companion.memory.summary.get_summary()
+                        if mem.get("evolved_personality"):
+                            companion.state.evolved_personality = mem["evolved_personality"]
+                        if mem.get("evolved_background"):
+                            companion.state.evolved_background = mem["evolved_background"]
+                        if mem.get("evolved_speech_style"):
+                            companion.state.evolved_speech_style = mem["evolved_speech_style"]
+                        companion.save_state(user_id=user_id)
+                    except Exception as e:
+                        logger.warning("Background memory v2 failed: %s", e)
 
-            if companion.memory.summary.should_update() and result.get("new_summary"):
-                companion.memory.summary.update(result["new_summary"])
-                companion.state.summary = result["new_summary"]
+                asyncio.create_task(_bg_memory())
             else:
-                companion.state.summary = companion.memory.summary.get_summary()
+                if result.get("evolved_personality"):
+                    companion.state.evolved_personality = result["evolved_personality"]
+                if result.get("evolved_background"):
+                    companion.state.evolved_background = result["evolved_background"]
+                if result.get("evolved_speech_style"):
+                    companion.state.evolved_speech_style = result["evolved_speech_style"]
 
-            companion.save_state(user_id=user_id)
+                if result.get("new_facts"):
+                    companion.memory.facts.add_facts(result["new_facts"])
+
+                if companion.memory.summary.should_update() and result.get("new_summary"):
+                    companion.memory.summary.update(result["new_summary"])
+                    companion.state.summary = result["new_summary"]
+                else:
+                    companion.state.summary = companion.memory.summary.get_summary()
+
+                companion.save_state(user_id=user_id)
 
             # AI 回复完成后，启动新的主动消息定时任务
             proactive_task = asyncio.create_task(

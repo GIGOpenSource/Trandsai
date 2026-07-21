@@ -65,8 +65,30 @@ async def send_feedback_message(data: dict, x_token: Optional[str] = Header(None
             thread.status = "open"
 
         thread.updated_at = datetime.now(timezone.utc)
+        db.flush()
 
-    return {"ok": True}
+        created_messages = [
+            {
+                "id": msg.id,
+                "sender": msg.sender,
+                "content": msg.content,
+                "created_at": msg.created_at.isoformat() if msg.created_at else None,
+            }
+        ]
+        if user_msg_count == 1:
+            db.refresh(system_msg)
+            created_messages.append(
+                {
+                    "id": system_msg.id,
+                    "sender": system_msg.sender,
+                    "content": system_msg.content,
+                    "created_at": system_msg.created_at.isoformat()
+                    if system_msg.created_at
+                    else None,
+                }
+            )
+
+    return {"ok": True, "messages": created_messages}
 
 
 @router.get("/api/feedback/messages")
