@@ -42,11 +42,13 @@ async def test_ws():
         headers = {"x-token": token} if token else {}
         resp = requests.get(f"{base}/companions?filter_type=all", headers=headers)
         companions = resp.json()
+        print(f"   返回数据: {str(companions)[:200]}")
         if not companions:
             print("   ❌ 没有伴侣，无法测试")
             return
-        companion_id = companions[0]["id"]
-        name = companions[0].get("profile", {}).get("name", "?")
+        c = companions[0]
+        companion_id = c.get("id") or c.get("companion_id") or c.get("profile", {}).get("id", "")
+        name = c.get("profile", {}).get("name") or c.get("name", "?")
         print(f"   ✅ 使用: {name} ({companion_id})")
     except Exception as e:
         print(f"   ❌ 获取失败: {e}")

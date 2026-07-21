@@ -294,17 +294,22 @@ def respond_node(state: AgentState) -> dict:
 
 
 def postprocess_node(state: AgentState) -> dict:
-    """合并节点：事实提取 + 摘要更新（一次 LLM 调用完成）"""
+    """事实提取 + 摘要更新（基于上一轮对话，为本轮 respond 提供更丰富的上下文）
+    初次对话(turns=0)时跳过；从第二轮开始，在 respond 之前运行。"""
     llm = get_llm(temperature=0.3)
     lang = state.get("language", "zh")
     old_summary = state["state"].get("summary", "")
 
-    prompt = f"""从以下对话中完成两个任务，用 === 分隔：
+    # 用 memory_text（包含上一轮对话）做分析
+    memory_text = state.get("memory_text", "")
+    recent = memory_text[:2000] if memory_text else "（暂无历史对话）"
 
-用户说：{state['user_input']}
-你回复：{state['final_response']}
+    prompt = f"""分析以下对话历史，完成两个任务，用 === 分隔：
 
-任务1: 提取关于用户的关键事实（每行一个，以 - 开头，最多5条）
+【对话历史】
+{recent}
+
+任务1: 提取关于用户的关键事实（每行一个，以 - 开头，最多5条，只提取新信息）
 任务2: 用一句话总结你们的关系进展（温暖甜蜜，像日记，不超过30字）
 
 输出格式：
@@ -334,7 +339,14 @@ SUMMARY: 一句话摘要"""
     if summary_match:
         new_summary = summary_match.group(1).strip().strip("\"'")
 
-    return {"new_facts": facts, "new_summary": new_summary}
+    # 把 postprocess 结果注入到 knowledge_text，供 respond 使用
+    enriched = ""
+    if facts:
+        enriched += "【已知用户事实】\n" + "\n".join(f"- {f}" for f in facts) + "\n"
+    if new_summary and new_summary != old_summary:
+        enriched += f"【关系进展】{new_summary}\n"
+
+    return {"new_facts": facts, "new_summary": new_summary, "knowledge_text": enriched}
 
 
 def persona_evolve_node(state: AgentState) -> dict:
@@ -519,28 +531,38 @@ speech_style: <进化或NO_CHANGE>"""
     }
 
 
-def _route_after_postprocess(state: AgentState) -> str:
+def _route_after_respond(state: AgentState) -> str:
     """每5轮触发一次人格进化"""
     turns = state["state"].get("turns", 0)
     return "evolve" if turns > 0 and turns % 5 == 0 else "end"
 
 
 # ===== Workflow =====
-# 优化后：6个节点 → 3个节点（reasoning → respond → postprocess）
-# 人格进化保持独立，每5轮触发一次
-workflow = StateGraph(AgentState)
-workflow.add_node("reasoning", reasoning_node)
-workflow.add_node("respond", respond_node)
-workflow.add_node("postprocess", postprocess_node)
-workflow.add_node("persona_evolve", persona_evolve_node)
+# 初次对话: reasoning → respond                      (2次LLM)
+# 后续对话: postprocess → respond                    (2次LLM)
+# 每5轮:   + persona_evolve                          (+1次LLM)
 
-workflow.set_entry_point("reasoning")
-workflow.add_edge("reasoning", "respond")
-workflow.add_edge("respond", "postprocess")
-workflow.add_conditional_edges("postprocess", _route_after_postprocess, {"evolve": "persona_evolve", "end": END})
-workflow.add_edge("persona_evolve", END)
+# --- 初次对话 workflow ---
+workflow_first = StateGraph(AgentState)
+workflow_first.add_node("reasoning", reasoning_node)
+workflow_first.add_node("respond", respond_node)
+workflow_first.add_node("persona_evolve", persona_evolve_node)
+workflow_first.set_entry_point("reasoning")
+workflow_first.add_edge("reasoning", "respond")
+workflow_first.add_conditional_edges("respond", _route_after_respond, {"evolve": "persona_evolve", "end": END})
+workflow_first.add_edge("persona_evolve", END)
+graph_first = workflow_first.compile()
 
-graph = workflow.compile()
+# --- 后续对话 workflow ---
+workflow_normal = StateGraph(AgentState)
+workflow_normal.add_node("postprocess", postprocess_node)
+workflow_normal.add_node("respond", respond_node)
+workflow_normal.add_node("persona_evolve", persona_evolve_node)
+workflow_normal.set_entry_point("postprocess")
+workflow_normal.add_edge("postprocess", "respond")
+workflow_normal.add_conditional_edges("respond", _route_after_respond, {"evolve": "persona_evolve", "end": END})
+workflow_normal.add_edge("persona_evolve", END)
+graph_normal = workflow_normal.compile()
 
 
 # ===== 对外接口 =====
@@ -579,7 +601,10 @@ def run_agent(
         "evolved_speech_style": companion_state.get("evolved_speech_style", ""),
     }
 
-    result = graph.invoke(state_in)
+    # 初次对话用 reasoning，后续用 postprocess
+    turns = companion_state.get("turns", 0)
+    active_graph = graph_first if turns == 0 else graph_normal
+    result = active_graph.invoke(state_in)
 
     return {
         "response": result["final_response"],
