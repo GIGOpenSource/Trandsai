@@ -956,7 +956,9 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             except Exception:
                 continue
 
+            t_memory = time.time()
             memory_text = companion.memory.build_prompt_context(query=combined_user_plain)
+            logger.info("[TIMING] build_prompt_context: %.2fs", time.time() - t_memory)
             language = normalize_ui_language(
                 burst_head.get("lang") or get_session(companion_id).get("lang") or user_lang or "zh"
             )

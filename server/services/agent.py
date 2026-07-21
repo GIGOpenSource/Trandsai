@@ -1,6 +1,7 @@
 import os
 import re
 import logging
+import time
 from typing import Any, Dict, List, Optional
 
 from core.i18n import normalize_ui_language
@@ -140,6 +141,7 @@ def _calculate_affection_delta(old_affection: float) -> float:
 
 def reasoning_node(state: AgentState) -> dict:
     """合并节点：思考 + 反思 + 创意（一次 LLM 调用完成三步推理）"""
+    t0 = time.time()
     llm = get_llm()
     lang = state.get("language", "zh")
     system_text = build_system_prompt(state["profile"], lang, evolved=_get_evolved(state), user_gender=state.get("user_gender", ""), turns=state["state"].get("turns", 0))
@@ -213,6 +215,7 @@ CREATIVE: [创意想法——可以自然包含的细节、小故事、浪漫场
     affection_delta = _calculate_affection_delta(old_affection)
     new_affection = max(0, min(100, old_affection + affection_delta))
 
+    logger.info("[TIMING] reasoning_node: %.2fs", time.time() - t0)
     return {
         "think_result": think_result,
         "reflect_result": reflect_result,
@@ -225,6 +228,7 @@ CREATIVE: [创意想法——可以自然包含的细节、小故事、浪漫场
 
 def respond_node(state: AgentState) -> dict:
     """生成最终回复"""
+    t0 = time.time()
     llm = get_llm()
     lang = state.get("language", "zh")
     system_text = build_system_prompt(state["profile"], lang, evolved=_get_evolved(state), user_gender=state.get("user_gender", ""), turns=state["state"].get("turns", 0))
@@ -290,12 +294,14 @@ def respond_node(state: AgentState) -> dict:
     raw = strip_outer_markdown_fence(llm_content_to_str(getattr(resp, "content", ""))).strip()
 
     final = humanize(raw, lang)
+    logger.info("[TIMING] respond_node: %.2fs", time.time() - t0)
     return {"final_response": final}
 
 
 def postprocess_node(state: AgentState) -> dict:
     """事实提取 + 摘要更新（基于上一轮对话，为本轮 respond 提供更丰富的上下文）
     初次对话(turns=0)时跳过；从第二轮开始，在 respond 之前运行。"""
+    t0 = time.time()
     llm = get_llm(temperature=0.3)
     lang = state.get("language", "zh")
     old_summary = state["state"].get("summary", "")
@@ -346,6 +352,7 @@ SUMMARY: 一句话摘要"""
     if new_summary and new_summary != old_summary:
         enriched += f"【关系进展】{new_summary}\n"
 
+    logger.info("[TIMING] postprocess_node: %.2fs", time.time() - t0)
     return {"new_facts": facts, "new_summary": new_summary, "knowledge_text": enriched}
 
 
@@ -577,6 +584,7 @@ def run_agent(
     user_gender: str = "",
 ) -> dict:
     """运行一次完整对话轮次，返回最终回复和更新信息"""
+    t_total = time.time()
     language = normalize_ui_language(language)
     state_in: AgentState = {
         "messages": [],
@@ -604,7 +612,9 @@ def run_agent(
     # 初次对话用 reasoning，后续用 postprocess
     turns = companion_state.get("turns", 0)
     active_graph = graph_first if turns == 0 else graph_normal
+    logger.info("[TIMING] run_agent start, turns=%d, graph=%s", turns, "first" if turns == 0 else "normal")
     result = active_graph.invoke(state_in)
+    logger.info("[TIMING] run_agent total: %.2fs", time.time() - t_total)
 
     return {
         "response": result["final_response"],
