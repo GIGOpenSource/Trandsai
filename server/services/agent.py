@@ -298,6 +298,99 @@ def respond_node(state: AgentState) -> dict:
     return {"final_response": final}
 
 
+def merged_respond_node(state: AgentState) -> dict:
+    """合并节点：思考 + 回复（一次 LLM 调用完成推理和回复生成）"""
+    t0 = time.time()
+    llm = get_llm()
+    lang = state.get("language", "zh")
+    system_text = build_system_prompt(state["profile"], lang, evolved=_get_evolved(state), user_gender=state.get("user_gender", ""), turns=state["state"].get("turns", 0))
+    name = state['profile'].get('name', 'Companion')
+
+    # 检索知识库
+    kb_text = ""
+    try:
+        kb_results = knowledge_base.search_entries(state["user_input"], top_k=3)
+        if kb_results:
+            kb_text = "【知识库参考】\n" + "\n".join(
+                f"- {r['title']}: {r['content'][:300]}" for r in kb_results
+            ) + "\n"
+    except Exception as e:
+        logger.warning("Knowledge lookup failed in merged node: %s", e)
+
+    # 内容安全限制
+    restriction_text = get_content_restriction(lang, state['state'].get('affection', 0))
+
+    current_time = state.get("current_time", "")
+    time_info = f"\n【当前时间】{current_time}" if current_time else ""
+    old_affection = state["state"].get("affection", 0)
+
+    prompt = f"""{system_text}{time_info}
+
+【当前状态】
+情绪：{state['state'].get('mood', '开心')} | 亲密度：{old_affection}
+
+【记忆上下文】
+{state['memory_text']}
+
+{kb_text}
+
+用户刚刚说：{state['user_input']}
+
+请你作为 {name}，先在内部完成思考，然后直接输出回复。
+
+【输出格式】（严格按此格式，不要加其他内容）
+
+REFLECT_EMOTION: [新情绪关键词，如：开心/害羞/期待/委屈，只写一个词]
+REPLY: [你的回复——完全口语化，像真实伙伴发微信]
+
+【回复要求】
+- 完全口语化，像真实伙伴发微信
+- 必须自然包含记忆钩子、身份认同、期待感
+- 必须有小情绪、撒娇、委屈
+- 必须自然，不要像AI
+- [长度规则] 当前亲密度是 {old_affection}，严格按回复长度规则执行。大多数情况只发一条消息，总字数在限制内。
+- [情感强度] 亲密度低→情绪更稳定克制；亲密度高→情绪更真实强烈。最终都要转化为挽留和依赖。
+- [角色一致性] 回复必须与角色设定（性格、背景、说话风格、爱好等）完全一致
+- [时间感知] 当前时间是 {current_time}，自然融入对话
+- [留存检测] 分析用户是否包含离开意图，如有则启动挽留模式。每轮回复最后必须留一个钩子，禁止以陈述句或告别语结尾。
+- [Reply shape] 括号/思考规则已在系统提示中：从左到右；每个括号块紧接在对应的口语前面；括号文字 ≤10%；大约每10轮只有1-2轮用括号；换行变成独立气泡。
+{restriction_text}
+- 直接输出回复内容，不要加任何前缀说明"""
+
+    resp = llm.invoke([SystemMessage(content=prompt)])
+    text = llm_content_to_str(getattr(resp, "content", ""))
+
+    # 解析情绪
+    mood = state["state"].get("mood", "开心")
+    m = re.search(r"REFLECT_EMOTION:\s*(.+?)(?:\n|$)", text)
+    if m:
+        mood = m.group(1).strip()
+
+    # 解析回复
+    reply = text
+    m = re.search(r"REPLY:\s*(.+?)$", text, re.DOTALL)
+    if m:
+        reply = m.group(1).strip()
+
+    # fallback
+    if not reply or len(reply) < 2:
+        reply = text.strip()
+
+    # 计算亲密度
+    affection_delta = _calculate_affection_delta(old_affection)
+    new_affection = max(0, min(100, old_affection + affection_delta))
+
+    raw = strip_outer_markdown_fence(reply).strip()
+    final = humanize(raw, lang)
+    logger.info("[TIMING] merged_respond_node: %.2fs", time.time() - t0)
+    return {
+        "final_response": final,
+        "updated_mood": mood,
+        "updated_affection": new_affection,
+        "knowledge_text": kb_text,
+    }
+
+
 def postprocess_node(state: AgentState) -> dict:
     """事实提取 + 摘要更新（基于上一轮对话，为本轮 respond 提供更丰富的上下文）
     初次对话(turns=0)时跳过；从第二轮开始，在 respond 之前运行。"""
@@ -545,17 +638,15 @@ def _route_after_respond(state: AgentState) -> str:
 
 
 # ===== Workflow =====
-# 初次对话: reasoning → respond                      (2次LLM)
-# 后续对话: postprocess → respond                    (2次LLM)
+# 初次对话: merged_respond                           (1次LLM)
+# 后续对话: postprocess → merged_respond             (2次LLM)
 # 每5轮:   + persona_evolve                          (+1次LLM)
 
 # --- 初次对话 workflow ---
 workflow_first = StateGraph(AgentState)
-workflow_first.add_node("reasoning", reasoning_node)
-workflow_first.add_node("respond", respond_node)
+workflow_first.add_node("respond", merged_respond_node)
 workflow_first.add_node("persona_evolve", persona_evolve_node)
-workflow_first.set_entry_point("reasoning")
-workflow_first.add_edge("reasoning", "respond")
+workflow_first.set_entry_point("respond")
 workflow_first.add_conditional_edges("respond", _route_after_respond, {"evolve": "persona_evolve", "end": END})
 workflow_first.add_edge("persona_evolve", END)
 graph_first = workflow_first.compile()
@@ -563,7 +654,7 @@ graph_first = workflow_first.compile()
 # --- 后续对话 workflow ---
 workflow_normal = StateGraph(AgentState)
 workflow_normal.add_node("postprocess", postprocess_node)
-workflow_normal.add_node("respond", respond_node)
+workflow_normal.add_node("respond", merged_respond_node)
 workflow_normal.add_node("persona_evolve", persona_evolve_node)
 workflow_normal.set_entry_point("postprocess")
 workflow_normal.add_edge("postprocess", "respond")
