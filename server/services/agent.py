@@ -60,6 +60,18 @@ def get_llm(
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",  # 百炼固定兼容地址
         )
 
+    if provider in ("grok", "xai"):
+        api_key = _override_or_env("xai_key", "XAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("请设置 XAI_API_KEY 环境变量.")
+        return ChatOpenAI(
+            model="grok-3-latest",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=api_key,
+            base_url="https://api.x.ai/v1",
+        )
+
     if provider == "openai":
         api_key = _override_or_env("openai_key", "OPENAI_API_KEY")
         if not api_key:
