@@ -37,6 +37,7 @@ from core.state import get_companion_manager, set_companion_manager
 from services.companion_manager import CompanionManager
 from services.knowledge_base import import_cultural_knowledge
 from services.memory import start_embedding_download
+
 load_dotenv()
 load_dotenv(dotenv_path=Path(__file__).parent / ".env")
 logger = logging.getLogger(__name__)
@@ -230,12 +231,15 @@ async def lifespan(app: FastAPI):
     except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.openapi.utils import get_openapi
+
 # 定义安全方案
 security = HTTPBearer(
   scheme_name="Token认证",
   description="在请求头中携带 Token: `Bearer <token值>`",
   auto_error=False  # 不自动抛出错误，由中间件处理
 )
+
 app = FastAPI(
     title="TrandsAI API",
     description="AI 数字伴侣后端服务 - 提供对话、朋友圈、知识库等功能",
@@ -279,6 +283,35 @@ app.add_middleware(
     allow_headers=["*"],
     max_age=86400,
 )
+# 关键：自定义 OpenAPI schema
+def custom_openapi():
+  if app.openapi_schema:
+      return app.openapi_schema
+
+  openapi_schema = get_openapi(
+      title="TrandsAI API",
+      version="1.0.0",
+      description="AI 数字伴侣后端服务 - 提供对话、朋友圈、知识库等功能",
+      routes=app.routes,
+  )
+
+  # 添加安全方案
+  openapi_schema["components"]["securitySchemes"] = {
+      "BearerAuth": {
+          "type": "http",
+          "scheme": "bearer",
+          "bearerFormat": "Token",
+          "description": "输入 Token（不需要 Bearer 前缀）"
+      }
+  }
+
+  # 全局应用安全方案
+  openapi_schema["security"] = [{"BearerAuth": []}]
+
+  app.openapi_schema = openapi_schema
+  return app.openapi_schema
+
+app.openapi = custom_openapi
 
 from core.middleware import TokenAuthMiddleware
 
