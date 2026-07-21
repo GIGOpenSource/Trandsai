@@ -229,9 +229,48 @@ async def lifespan(app: FastAPI):
         await asyncio.wait_for(warmup_task, timeout=5.0)
     except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
-
-
-app = FastAPI(title="trandsai", lifespan=lifespan)
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+# 定义安全方案
+security = HTTPBearer(
+  scheme_name="Token认证",
+  description="在请求头中携带 Token: `Bearer <token值>`",
+  auto_error=False  # 不自动抛出错误，由中间件处理
+)
+app = FastAPI(
+    title="TrandsAI API",
+    description="AI 数字伴侣后端服务 - 提供对话、朋友圈、知识库等功能",
+    version="1.0.0",
+    contact={
+        "name": "TrandsAI Team",
+        "email": "support@trandsai.com",
+    },
+    license_info={
+        "name": "Private",
+    },
+    lifespan=lifespan,
+    openapi_tags=[
+        {
+            "name": "认证",
+            "description": "用户登录、注册、Token管理",
+        },
+        {
+            "name": "伴侣",
+            "description": "AI伴侣的CRUD操作和WebSocket对话",
+        },
+        {
+            "name": "朋友圈",
+            "description": "朋友圈动态的发布、点赞、评论",
+        },
+        {
+            "name": "管理后台",
+            "description": "管理员专用接口",
+        },
+    ],
+    swagger_ui_init_oauth={
+        "usePkceWithAuthorizationCodeGrant": True,
+        "clientId": "trandsai-swagger",
+    }
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_get_cors_origins(),

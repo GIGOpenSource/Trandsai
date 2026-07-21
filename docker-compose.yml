@@ -17,6 +17,7 @@ services:
       - ./page/frontend:/usr/share/nginx/html/frontend:ro
       - ./page/admin:/usr/share/nginx/html/admin:ro
       - ./page/file:/usr/share/nginx/html/file:ro
+
       - ./page/cert:/etc/nginx/cert:ro
       - ./data:/usr/share/nginx/html/data:ro
     healthcheck:

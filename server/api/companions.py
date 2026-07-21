@@ -41,7 +41,9 @@ from services.async_tasks import start_avatar_generation
 from fastapi import Depends, Header
 from core.permissions import IsAuthenticated, IsOwner, IsAdmin
 from core.dependencies import require_permissions, get_current_user
-router = APIRouter()
+router = APIRouter(
+    tags=["伴侣"]
+)
 logger = logging.getLogger(__name__)
 
 # 单次从 WS 队列合并处理的用户消息条数上限：避免一次合并过多导致模型/记忆语义「串」、且 empty() 在竞态下不可靠
@@ -671,7 +673,11 @@ async def api_create_companion(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@router.get("/companions")
+@router.get("/companions",
+            summary="获取伴侣列表",
+            description="获取所有可用的AI伴侣列表，支持分页",
+            response_model=list,
+            tags=["伴侣"],)
 async def api_list_companions(
         x_token: Optional[str] = Header(None, alias="x-token"),
         user_id: int = Depends(require_permissions(IsAuthenticated)),

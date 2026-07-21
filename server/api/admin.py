@@ -124,7 +124,27 @@ async def admin_auth_required(authorization: str = Header(...)):
     return token
 
 
-@router.post("/api/admin/login")
+@router.post("/api/admin/login",
+             summary="管理员",
+             tags=["管理端后台"],
+             description="使用用户名和密码登录，返回 Token",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "登录成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "token": "abc123...",
+                                 "user_id": 1,
+                                 "nickname": "用户昵称"
+                             }
+                         }
+                     }
+                 },
+                 401: {"description": "用户名或密码错误"}
+             }
+             )
 async def admin_login(data: dict, lang: str = Depends(get_admin_lang)):
     password = data.get("password", "")
     try:
