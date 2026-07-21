@@ -3,6 +3,7 @@ import functools
 import json
 import logging
 import random
+import time
 import re
 from datetime import datetime, timezone
 
@@ -1019,8 +1020,10 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             keep_task = asyncio.create_task(
                 _keepalive_during_agent(websocket, agent_task, language)
             )
+            t_agent = time.time()
             try:
                 result = await asyncio.wait_for(asyncio.shield(agent_task), timeout=120.0)
+                logger.info("[TIMING] agent_task (async): %.2fs", time.time() - t_agent)
             except asyncio.TimeoutError:
                 try:
                     err_txt = _AGENT_TIMEOUT_MESSAGE.get(language, _AGENT_TIMEOUT_MESSAGE["zh"])
@@ -1049,6 +1052,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             show_think = random.random() < _THINK_TOAST_UI_PROBABILITY * (
                 0.35 + 0.65 * min(1.0, aff / 100.0)
             )
+            t_delivery = time.time()
             sent_segments, was_interrupted = await _deliver_assistant_content(
                 websocket,
                 companion,
@@ -1058,6 +1062,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
                 delivery_mood=delivery_mood,
                 user_short_term=user_short_term,
             )
+            logger.info("[TIMING] deliver_content: %.2fs, segments=%d, interrupted=%s", time.time() - t_delivery, len(sent_segments), was_interrupted)
 
             if was_interrupted:
                 # 用户中途回复了新消息，已发送的部分已逐段保存
