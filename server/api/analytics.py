@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from core.database import ButtonClickORM, PageViewORM, get_db
 
-router = APIRouter()
+router = APIRouter(tags=["数据分析"])
 
 
 class PageViewPayload(BaseModel):
@@ -25,7 +25,7 @@ class ButtonClickPayload(BaseModel):
     language: str = ""
 
 
-@router.post("/api/analytics/page-view")
+@router.post("/api/analytics/page-view", summary="记录页面浏览")
 async def track_page_view(data: PageViewPayload):
     with get_db() as db:
         db.add(PageViewORM(
@@ -39,7 +39,7 @@ async def track_page_view(data: PageViewPayload):
     return {"ok": True}
 
 
-@router.post("/api/analytics/button-click")
+@router.post("/api/analytics/button-click", summary="记录按钮点击")
 async def track_button_click(data: ButtonClickPayload):
     with get_db() as db:
         db.add(ButtonClickORM(

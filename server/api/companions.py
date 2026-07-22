@@ -600,7 +600,7 @@ def _extract_json(text: str) -> dict:
         raise
 
 
-@router.post("/companions/generate")
+@router.post("/companions/generate",tags=["伴侣"], summary="AI 生成伴侣人设")
 async def api_generate_persona(data: dict):
     """根据基础信息 AI 自动生成完整人设"""
     name = data.get("name", "")
@@ -644,7 +644,29 @@ async def api_generate_persona(data: dict):
         raise HTTPException(status_code=500, detail=f"生成失败: {str(e)}")
 
 
-@router.post("/companions")
+@router.post("/companions",
+             summary="创建伴侣",
+             description="创建新的AI伴侣，需要登录",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "创建成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "id": "comp_001",
+                                 "name": "小美",
+                                 "age": 23,
+                                 "gender": "female",
+                                 "city": "上海",
+                                 "avatar_url": "https://example.com/avatar.jpg"
+                             }
+                         }
+                     }
+                 },
+                 400: {"description": "参数错误"},
+                 401: {"description": "未登录"}
+             })
 async def api_create_companion(
         data: dict,
         user_id: int = Depends(require_permissions(IsAuthenticated)),
@@ -673,9 +695,29 @@ async def api_create_companion(
 
 @router.get("/companions",
             summary="获取伴侣列表",
-            description="获取所有可用的AI伴侣列表，支持分页",
+            description="获取所有可用的AI伴侣列表，支持多种筛选条件",
             response_model=list,
-            tags=["伴侣"],)
+            responses={
+                200: {
+                    "description": "成功",
+                    "content": {
+                        "application/json": {
+                            "example": [
+                                {
+                                    "id": "comp_001",
+                                    "name": "小美",
+                                    "age": 23,
+                                    "gender": "female",
+                                    "city": "上海",
+                                    "avatar_url": "https://example.com/avatar1.jpg",
+                                    "affection": 75
+                                }
+                            ]
+                        }
+                    }
+                },
+                401: {"description": "未登录"}
+            })
 async def api_list_companions(
         x_token: Optional[str] = Header(None, alias="x-token"),
         user_id: int = Depends(require_permissions(IsAuthenticated)),
@@ -694,7 +736,7 @@ async def api_list_companions(
     return get_companion_manager().list_all_for_any(filter_type=filter_type, user_id=user_id)
 
 
-@router.get("/companions/{companion_id}")
+@router.get("/companions/{companion_id}", summary="获取伴侣详情")
 async def api_get_companion(
         companion_id: str,
         user_id: int = Depends(require_permissions(IsAuthenticated))
@@ -704,7 +746,7 @@ async def api_get_companion(
         raise HTTPException(status_code=404, detail="智能体不存在")
     return companion.to_dict(user_id=user_id)
 
-@router.get("/companions/{companion_id}/messages")
+@router.get("/companions/{companion_id}/messages", summary="获取聊天记录")
 async def api_get_messages(
   companion_id: str,
   limit: int = 20,
@@ -722,7 +764,7 @@ async def api_get_messages(
 
 
 # 生成头像
-@router.post("/companions/{companion_id}/generate-avatar")
+@router.post("/companions/{companion_id}/generate-avatar", summary="AI 生成伴侣头像")
 async def api_generate_avatar(
         companion_id: str,
         user_id: int = Depends(require_permissions(IsAuthenticated))
@@ -741,7 +783,7 @@ async def api_generate_avatar(
 
 
 # 删除 - 需要是所有者
-@router.delete("/companions/{companion_id}")
+@router.delete("/companions/{companion_id}", summary="删除伴侣")
 async def api_delete_companion(
         companion_id: str,
         user_id: int = Depends(require_permissions(IsAuthenticated))
@@ -755,7 +797,7 @@ async def api_delete_companion(
     return {"ok": True}
 
 
-@router.post("/companions/{companion_id}/clear-messages")
+@router.post("/companions/{companion_id}/clear-messages", summary="清空聊天记录")
 async def api_clear_messages(
         companion_id: str,
         user_id: int = Depends(require_permissions(IsAuthenticated))
@@ -1162,7 +1204,7 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
             pass
 
 
-@router.post("/knowledge/search")
+@router.post("/knowledge/search",tags=["知识库"], summary="搜索知识库" )
 async def public_knowledge_search(data: dict):
     """公开知识库搜索（发现页用）"""
     from services.knowledge_base import knowledge_base

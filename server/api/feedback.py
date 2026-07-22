@@ -6,10 +6,10 @@ from fastapi import APIRouter, Header, HTTPException
 from core.auth import verify_token as redis_verify_token
 from core.database import FeedbackMessageORM, FeedbackThreadORM, UserORM, get_db
 
-router = APIRouter()
+router = APIRouter(tags=["反馈"])
 
 
-@router.post("/api/feedback/messages")
+@router.post("/api/feedback/messages", summary="发送反馈消息")
 async def send_feedback_message(data: dict, x_token: Optional[str] = Header(None)):
     """用户发送反馈消息"""
     user_id = redis_verify_token(x_token) if x_token else None
@@ -69,7 +69,7 @@ async def send_feedback_message(data: dict, x_token: Optional[str] = Header(None
     return {"ok": True}
 
 
-@router.get("/api/feedback/messages")
+@router.get("/api/feedback/messages", summary="获取反馈消息列表")
 async def get_feedback_messages(x_token: Optional[str] = Header(None)):
     """获取当前用户的反馈消息列表"""
     user_id = redis_verify_token(x_token) if x_token else None

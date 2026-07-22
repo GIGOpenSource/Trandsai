@@ -9,7 +9,7 @@ from fastapi import APIRouter, Header, HTTPException
 
 from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserCompanionStateORM, UserORM, get_db
 from core.auth import generate_token, delete_token, verify_token as redis_verify_token
-router = APIRouter()
+router = APIRouter(tags=["认证"])
 
 _PBKDF2_ROUNDS = 200_000
 _PASSWORD_HASH_PREFIX = "pbkdf2_sha256"
@@ -131,7 +131,30 @@ def verify_user_token(token: str) -> Optional[int]:
         return user.id
 
 
-@router.post("/api/auth/register")
+@router.post("/api/auth/register",
+             summary="用户注册",
+             description="创建新用户账号，返回用户信息和Token",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "注册成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "token": "abc123...",
+                                 "user": {
+                                     "id": 1,
+                                     "username": "user001",
+                                     "nickname": "用户昵称",
+                                     "gender": "male",
+                                     "age": 25
+                                 }
+                             }
+                         }
+                     }
+                 },
+                 400: {"description": "用户名已存在或参数错误"}
+             })
 async def user_register(data: dict):
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
@@ -176,7 +199,29 @@ async def user_register(data: dict):
     return {"token": token, "user": out_user}
 
 
-@router.post("/api/auth/login")
+@router.post("/api/auth/login",
+             summary="用户登录",
+             description="使用用户名和密码登录，返回用户信息和Token",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "登录成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "token": "abc123...",
+                                 "user": {
+                                     "id": 1,
+                                     "username": "user001",
+                                     "nickname": "用户昵称",
+                                     "role": "user"
+                                 }
+                             }
+                         }
+                     }
+                 },
+                 401: {"description": "用户名或密码错误"}
+             })
 async def user_login(data: dict):
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
@@ -205,14 +250,37 @@ async def user_login(data: dict):
 
     token = generate_token(user_id)
     return {"token": token, "user": out_user}
-@router.post("/api/auth/logout")
+@router.post("/api/auth/logout", summary="用户登出")
 async def user_logout(x_token: Optional[str] = Header(None)):
   """登出：删除 Redis 中的 Token"""
   if x_token:
       delete_token(x_token)
   return {"ok": True}
 
-@router.get("/api/auth/me")
+@router.get("/api/auth/me",
+            summary="获取当前用户信息",
+            description="根据Token获取当前登录用户的详细信息",
+            response_model=dict,
+            responses={
+                200: {
+                    "description": "成功",
+                    "content": {
+                         "application/json": {
+                             "example": {
+                                 "id": 1,
+                                 "username": "user001",
+                                 "nickname": "用户昵称",
+                                 "gender": "male",
+                                 "age": 25,
+                                 "region": "北京",
+                                 "occupation": "工程师",
+                                 "avatar_url": "https://example.com/avatar.jpg"
+                             }
+                         }
+                    }
+                },
+                401: {"description": "未登录或Token已过期"}
+            })
 async def user_me(x_token: Optional[str] = Header(None)):
     user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
@@ -237,7 +305,7 @@ async def user_me(x_token: Optional[str] = Header(None)):
         }
 
 
-@router.patch("/api/auth/me")
+@router.patch("/api/auth/me", summary="更新当前用户信息")
 async def user_update_me(data: dict, x_token: Optional[str] = Header(None)):
     user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
@@ -291,7 +359,7 @@ def clear_all_admin_tokens():
     _admin_token_store.clear()
 
 
-@router.get("/api/users/stats")
+@router.get("/api/users/stats", summary="获取用户统计数据")
 async def user_stats(x_token: Optional[str] = Header(None)):
     """获取当前用户的统计数据（亲密度>5的伴侣数、总对话轮数、陪伴最久天数）"""
     user_id = redis_verify_token(x_token) if x_token else None

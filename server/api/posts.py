@@ -22,7 +22,7 @@ from services.posts import (
     toggle_post_like,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["社区"])
 logger = logging.getLogger(__name__)
 
 
@@ -52,7 +52,7 @@ def _get_user_from_token(x_token: Optional[str] = None) -> Optional[dict]:
     return None
 
 
-@router.get("/api/posts")
+@router.get("/api/posts", summary="获取帖子列表")
 async def api_list_posts(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -78,7 +78,7 @@ async def api_list_posts(
     return {"posts": posts, "total": total}
 
 
-@router.get("/api/posts/search")
+@router.get("/api/posts/search", summary="搜索帖子")
 async def api_search_posts(
     q: str = Query(..., min_length=1, max_length=100),
     limit: int = Query(20, ge=1, le=100),
@@ -110,7 +110,7 @@ async def api_search_posts(
     return {"posts": posts, "total": total}
 
 
-@router.get("/api/posts/my")
+@router.get("/api/posts/my", summary="获取我的帖子")
 async def api_list_my_posts(
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -135,11 +135,31 @@ async def api_list_my_posts(
     return {"posts": posts, "total": total}
 
 
-@router.post("/api/posts")
+@router.post("/api/posts",
+             summary="创建帖子",
+             description="创建新的社区帖子，支持上传图片",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "创建成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "ok": True,
+                                 "post_id": 1,
+                                 "title": "帖子标题",
+                                 "content": "帖子内容",
+                                 "user_name": "用户昵称"
+                             }
+                         }
+                     }
+                 },
+                 400: {"description": "参数错误"}
+             })
 async def api_create_post(
-    data: dict = Body(...),
-    x_device_id: Optional[str] = Header(None),
-    x_token: Optional[str] = Header(None),
+        data: dict = Body(...),
+        x_device_id: Optional[str] = Header(None),
+        x_token: Optional[str] = Header(None),
 ):
     """创建新帖子"""
     device_id = _get_device_id(x_device_id)
@@ -166,7 +186,7 @@ async def api_create_post(
     return result
 
 
-@router.get("/api/posts/{post_id}")
+@router.get("/api/posts/{post_id}", summary="获取帖子详情")
 async def api_get_post_detail(
     post_id: int,
     x_device_id: Optional[str] = Header(None),
@@ -200,7 +220,7 @@ async def api_get_post_detail(
     return post
 
 
-@router.post("/api/posts/{post_id}/like")
+@router.post("/api/posts/{post_id}/like", summary="点赞/取消点赞")
 async def api_toggle_post_like(
     post_id: int,
     x_device_id: Optional[str] = Header(None),
@@ -219,7 +239,7 @@ async def api_toggle_post_like(
     return result
 
 
-@router.post("/api/posts/{post_id}/comment")
+@router.post("/api/posts/{post_id}/comment", summary="发表评论")
 async def api_add_post_comment(
     post_id: int,
     data: dict = Body(...),
@@ -246,7 +266,7 @@ async def api_add_post_comment(
     return result
 
 
-@router.delete("/api/posts/{post_id}")
+@router.delete("/api/posts/{post_id}", summary="删除帖子")
 async def api_delete_post(
     post_id: int,
     x_token: Optional[str] = Header(None),
@@ -272,9 +292,26 @@ async def api_delete_post(
 
 # ===== 图片上传 =====
 
-@router.post("/api/upload/image")
+@router.post("/api/upload/image",
+             summary="上传图片",
+             description="上传图片文件，支持 jpeg/png/gif/webp 格式，最大 10MB",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "上传成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "ok": True,
+                                 "url": "https://cdn.example.com/images/abc123.jpg"
+                             }
+                         }
+                     }
+                 },
+                 400: {"description": "文件类型不支持或文件过大"}
+             })
 async def api_upload_image(
-    file: UploadFile = File(...),
+        file: UploadFile = File(...),
 ):
     """上传图片，返回可访问的 URL"""
     ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}

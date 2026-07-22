@@ -19,7 +19,7 @@ from services.moments import (
     toggle_like,
 )
 
-router = APIRouter()
+router = APIRouter(tags=["朋友圈"])
 
 
 def _get_device_id(x_device_id: Optional[str] = None) -> str:
@@ -75,7 +75,34 @@ def _get_user_id(x_token: Optional[str] = None) -> Optional[int]:
 logger = logging.getLogger(__name__)
 
 
-@router.get("/api/moments")
+@router.get("/api/moments",
+            summary="获取朋友圈列表",
+            description="获取朋友圈动态列表，支持多条件筛选，无需登录",
+            response_model=dict,
+            responses={
+                200: {
+                    "description": "成功",
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "moments": [
+                                    {
+                                        "id": 1,
+                                        "companion_id": "comp_001",
+                                        "companion_name": "小美",
+                                        "content": "今天天气真好！",
+                                        "image_url": "https://example.com/img1.jpg",
+                                        "likes_count": 12,
+                                        "liked": False,
+                                        "created_at": "2024-06-21T10:30:00Z"
+                                    }
+                                ],
+                                "total": 100
+                            }
+                        }
+                    }
+                }
+            })
 async def api_list_moments(
         limit: int = Query(20, ge=1, le=100),
         offset: int = Query(0, ge=0),
@@ -203,7 +230,7 @@ async def api_list_moments(
         )
 
 # POST 路由必须在 GET {moment_id} 之前，避免路径冲突
-@router.post("/api/moments/{moment_id}/like")
+@router.post("/api/moments/{moment_id}/like", summary="点赞/取消点赞")
 async def api_toggle_like(
     moment_id: int,
     user_id: int = Depends(require_permissions(IsAuthenticated)),
@@ -216,7 +243,7 @@ async def api_toggle_like(
     return result
 
 
-@router.post("/api/moments/{moment_id}/comment")
+@router.post("/api/moments/{moment_id}/comment", summary="发表评论")
 async def api_add_comment(
     moment_id: int,
     x_device_id: Optional[str] = Header(None),
@@ -233,7 +260,7 @@ async def api_add_comment(
     return result
 
 
-@router.post("/api/moments/{moment_id}/regenerate-image")
+@router.post("/api/moments/{moment_id}/regenerate-image", summary="重新生成配图")
 async def api_regenerate_moment_image(
     moment_id: int,
     user_id: int = Depends(require_permissions(IsAuthenticated)),
@@ -246,7 +273,7 @@ async def api_regenerate_moment_image(
 
 
 # GET {moment_id} 必须在所有 POST {moment_id}/xxx 之后
-@router.get("/api/moments/{moment_id}")
+@router.get("/api/moments/{moment_id}", summary="获取朋友圈详情")
 async def api_get_moment_detail(
     moment_id: int,
     x_token: Optional[str] = Header(None),
@@ -260,7 +287,7 @@ async def api_get_moment_detail(
     return moment
 
 
-@router.get("/api/companions/{companion_id}/moments")
+@router.get("/api/companions/{companion_id}/moments", summary="获取伴侣的所有朋友圈")
 async def api_companion_moments(
     companion_id: str,
     limit: int = Query(20, ge=1, le=100),
