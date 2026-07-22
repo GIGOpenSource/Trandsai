@@ -108,3 +108,4 @@ xxhash==3.7.0
 zipp==3.23.1
 zstandard==0.25.0
 redis
+cos-python-sdk-v5
