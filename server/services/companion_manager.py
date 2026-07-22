@@ -404,10 +404,10 @@ class CompanionManager:
         Args:
             filter_type: 过滤类型
                 - "all": 返回所有智能体（默认）
-                - "chatted": 返回有对话的智能体（turns > 0）
+                - "chatted": 返回有对话的智能体
                 - "affectionate": 返回亲密度 > 5 的智能体
                 - "mine": 返回自己创建的智能体
-                - "mine_chatted": 返回自己创建的 + 有对话的智能体
+                - "mine_chatted": 自己创建的全部返回，别人创建的只有对话才返回；按 max(创建时间, 最后消息时间) 降序排序
             user_id: 当前用户ID（用于判断是否是自己创建的）
         """
         result = []
@@ -455,7 +455,11 @@ class CompanionManager:
                 if not self._is_my_companion(c, user_info):
                     continue
             elif filter_type == "mine_chatted":
-                if not self._is_my_companion(c, user_info):
+                # 逻辑：自己创建的全部返回，别人创建的只有对话才返回
+                is_mine = self._is_my_companion(c, user_info)
+                has_chat = c.profile.id in chatted_companion_ids
+                if not is_mine and not has_chat:
+                    # 不是自己创建的，且没有对话，跳过
                     continue
 
             # 使用预查询的状态数据构建 item（避免 to_dict 中的 N+1）
@@ -689,23 +693,19 @@ class CompanionManager:
         )
 
     def _sort_mine_chatted(self, items: List[Dict]) -> List[Dict]:
-        """排序：自己创建的无对话排前面，有对话的按最后消息时间降序"""
-        no_chat = []
-        has_chat = []
+        """排序：按 max(创建时间, 最后消息时间) 降序"""
+        def get_sort_key(item: Dict) -> str:
+            """获取排序依据：max(创建时间, 最后消息时间)"""
+            created_at = item.get("created_at", "") or ""
+            last_message_time = item.get("last_message_time", "") or ""
+            # 比较两个时间字符串，返回较大的那个
+            if last_message_time > created_at:
+                return last_message_time
+            return created_at
 
-        for item in items:
-            if item.get("last_message_time"):
-                has_chat.append(item)
-            else:
-                no_chat.append(item)
-
-        # 无对话的按创建时间降序（新建的排前面）
-        no_chat.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-
-        # 有对话的按最后消息时间降序（常用的排前面）
-        has_chat.sort(key=lambda x: x.get("last_message_time", ""), reverse=True)
-
-        return no_chat + has_chat
+        # 按 max(创建时间, 最后消息时间) 降序排序
+        items.sort(key=get_sort_key, reverse=True)
+        return items
 
     def update(self, companion_id: str, data: dict) -> Optional[Companion]:
         companion = self._companions.get(companion_id)
