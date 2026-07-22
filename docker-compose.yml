@@ -19,7 +19,6 @@ services:
       - ./page/file:/usr/share/nginx/html/file:ro
       - ./page/agreement:/usr/share/nginx/html/agreement:ro
       - ./page/cert:/etc/nginx/cert:ro
-      - ./data:/usr/share/nginx/html/data:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/"]
       interval: 30s

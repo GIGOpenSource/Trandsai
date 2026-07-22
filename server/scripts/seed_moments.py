@@ -6,6 +6,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from core.database import engine
+from services.image_generation import generate_image_with_cache, generate_moment_image_prompt
 
 # 获取所有伴侣
 companions = []
@@ -74,21 +75,14 @@ captions = [
     "今天的月亮特别圆，我拍了张照片，然后删了。有些美景，自己看过就够了。除非你在我身边 🌕",
 ]
 
-# 随机图片主题
-image_themes = [
-    "coffee", "sunset", "rain", "books", "cat", "flowers",
-    "city-night", "mountain", "kitchen", "autumn", "ocean",
-    "stars", "train", "snow", "market", "piano", "park",
-    "dinner", "desk", "concert", "beach", "bridge", "cafe",
-    "garden", "lake", "street", "market", "bakery", "forest",
-    "skyline", "road", "lighthouse", "village", "castle",
-]
-
 random.shuffle(captions)
 
 # 生成50条，时间分布在过去30天内
+from datetime import timezone
 now = datetime.now(timezone.utc)
 moments_data = []
+
+print("\n开始生成朋友圈配图（AI生成 + COS上传）...")
 
 for i in range(50):
     companion = companions[i % len(companions)]
@@ -101,13 +95,32 @@ for i in range(50):
     # 确保created_at不可能是未来时间
     if created_at > now:
         created_at = now - timedelta(hours=1)
-    
-    seed = random.randint(1, 100000)
-    image_url = f"https://picsum.photos/seed/{seed}/600/600"
+
     caption = captions[i % len(captions)]
+
+    # 使用 AI 生成配图
+    try:
+        profile_dict = {
+            "gender": "女",  # 默认
+            "age": 22,
+            "city": companion.get("city", ""),
+            "personality": "",
+            "hobbies": "",
+            "mbti": "",
+        }
+        prompt, img_style = generate_moment_image_prompt(caption, profile=profile_dict)
+        image_url = generate_image_with_cache(prompt, style=img_style, width=600, height=600)
+        if not image_url or not image_url.startswith("http"):
+            print(f"  [{i+1}/50] ⚠ 配图生成失败，跳过: {caption[:20]}...")
+            continue
+        print(f"  [{i+1}/50] ✓ 配图已生成: {image_url[:60]}...")
+    except Exception as e:
+        print(f"  [{i+1}/50] ✗ 配图生成异常: {e}")
+        continue
+
     likes = random.randint(3, 88)
     comments = random.randint(0, 25)
-    
+
     moments_data.append({
         "companion_id": companion["id"],
         "image_url": image_url,
@@ -133,17 +146,17 @@ with engine.begin() as conn:
         )
         inserted += 1
 
-print(f"成功插入 {inserted} 条朋友圈数据")
+print(f"\n成功插入 {inserted} 条朋友圈数据")
 
 # 验证
 with engine.connect() as conn:
     count = conn.execute(text("SELECT COUNT(*) FROM moments")).scalar()
     print(f"数据库中朋友圈总数: {count}")
-    
+
     result = conn.execute(text("""
-        SELECT c.name, COUNT(*) as cnt 
-        FROM moments m 
-        JOIN companions c ON m.companion_id = c.id 
+        SELECT c.name, COUNT(*) as cnt
+        FROM moments m
+        JOIN companions c ON m.companion_id = c.id
         GROUP BY c.name
     """))
     print("各伴侣朋友圈数量:")

@@ -148,6 +148,7 @@ async def lifespan(app: FastAPI):
                     "anthropic_ready": bool(os.getenv("ANTHROPIC_API_KEY", "")),
                     "deepseek_ready": bool(os.getenv("DEEPSEEK_API_KEY", "")),
                     "openai_ready": bool(os.getenv("OPENAI_API_KEY", "")),
+                    "xai_ready": bool(os.getenv("XAI_API_KEY", "")),
                     "admin_password_set": bool(os.getenv("ADMIN_PASSWORD", "")),
                 },
                 "sort_order": 1,
@@ -185,6 +186,21 @@ async def lifespan(app: FastAPI):
                     "base_url": "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
                     "timeout": 120,
                     "negative_prompt": "模糊、畸形、水印、文字、低画质"
+                }
+            },
+            {
+                "key": "image_xai",
+                "name": "xAI Grok 绘图配置",
+                "description": "文生图 xAI (Grok) 服务商参数",
+                "config_type": "image_generation",
+                "enabled": 1,
+                "sort_order": 4,
+                "config_json": {
+                    "provider": "xai",
+                    "api_key": os.getenv("XAI_API_KEY", ""),
+                    "model": "grok-2-image",
+                    "base_url": "https://api.x.ai/v1/images/generations",
+                    "timeout": 120
                 }
             },
         ]
@@ -360,24 +376,7 @@ app.add_middleware(TokenAuthMiddleware)
 if DIST_DIR.exists():
     app.mount("/assets", StaticFiles(directory=str(DIST_DIR / "assets")), name="assets")
 
-# 本地缓存图片目录（与 image_generation 保持一致，可通过 IMAGE_STORAGE_DIR 指定）
-# _image_dir = Path(
-#     os.environ.get("IMAGE_STORAGE_DIR", str(Path(BASE_DIR) / "data" / "images"))
-# ).expanduser().resolve()
-# _image_dir.mkdir(parents=True, exist_ok=True)
-# app.mount("/data/images", StaticFiles(directory=str(_image_dir)), name="images")
-
 from services.cos_storage import is_cos_enabled
-
-_image_dir = Path(
-    os.environ.get("IMAGE_STORAGE_DIR", str(Path(BASE_DIR) / "data" / "images"))
-).expanduser().resolve()
-_image_dir.mkdir(parents=True, exist_ok=True)
-
-# 始终挂载本地静态文件目录作为兜底
-# 当 COS 已配置时，_to_local_image_url 优先返回 COS URL；
-# 若 COS 上传失败，仍可通过 /data/images/ 访问本地文件
-app.mount("/data/images", StaticFiles(directory=str(_image_dir)), name="images")
 
 
 # 管理后台根路径重定向（必须在 Mount /admin 之前注册，否则 Mount 会优先匹配 /admin）

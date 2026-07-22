@@ -1,15 +1,12 @@
-import os
 import uuid
 import logging
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Body, File, Header, HTTPException, Query, UploadFile
 from sqlalchemy import func
 
-from core.config import BASE_DIR
 from core.database import PostORM, get_db
-from services.cos_storage import is_cos_enabled, upload_bytes_to_cos
+from services.cos_storage import upload_bytes_to_cos
 from services.posts import (
     add_post_comment,
     create_post,
@@ -308,12 +305,13 @@ async def api_delete_post(
                          }
                      }
                  },
-                 400: {"description": "文件类型不支持或文件过大"}
+                 400: {"description": "文件类型不支持或文件过大"},
+                 500: {"description": "COS未配置或上传失败"}
              })
 async def api_upload_image(
         file: UploadFile = File(...),
 ):
-    """上传图片，返回可访问的 URL"""
+    """上传图片到COS，返回可访问的 URL"""
     ALLOWED_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
     MAX_SIZE = 10 * 1024 * 1024  # 10MB
 
@@ -332,18 +330,12 @@ async def api_upload_image(
     }.get(file.content_type, ".jpg")
 
     filename = f"{uuid.uuid4().hex}{ext}"
-    image_dir = Path(BASE_DIR) / "data" / "images"
-    image_dir.mkdir(parents=True, exist_ok=True)
-    file_path = image_dir / filename
 
-    with open(file_path, "wb") as f:
-        f.write(content)
-
-    # 尝试上传到 COS
+    # 上传到 COS
     cos_key = f"images/{filename}"
     cos_url = upload_bytes_to_cos(content, cos_key)
     if cos_url:
         return {"ok": True, "url": cos_url}
 
-    # COS 未配置或上传失败时返回本地路径
-    return {"ok": True, "url": f"/data/images/{filename}"}
+    # COS 未配置或上传失败
+    raise HTTPException(status_code=500, detail="图片上传失败：COS未配置或上传失败")

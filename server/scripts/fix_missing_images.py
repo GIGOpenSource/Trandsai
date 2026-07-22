@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-修复缺失的图片文件（数据库有本地缓存URL但文件不存在）。
-只重新生成文件缺失的记录，不修改已有文件。
+修复数据库中使用旧 /data/images/ 路径的图片记录。
+将这些记录重新生成为 AI 图片并上传到 COS。
 """
 
 import sys
@@ -12,20 +12,17 @@ import time
 os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.getcwd())
 
-from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from core.database import get_db, CompanionORM, MomentORM
-from core.config import BASE_DIR
 from services.image_generation import (
     generate_avatar_prompt,
     generate_moment_image_prompt,
     generate_image_with_cache,
 )
 
-IMAGE_CACHE_DIR = Path(BASE_DIR) / "data" / "images"
-
 
 def process_avatar(companion_id: str) -> dict:
+    """重新生成头像并上传到COS"""
     try:
         with get_db() as db:
             companion = db.query(CompanionORM).filter(CompanionORM.id == companion_id).first()
@@ -49,19 +46,18 @@ def process_avatar(companion_id: str) -> dict:
             prompt = generate_avatar_prompt(profile)
             url = generate_image_with_cache(prompt, style="portrait", width=512, height=512)
 
-            if url:
+            if url and url.startswith("http"):
                 companion.avatar_url = url
-                # 验证文件存在
-                fname = url.replace("/data/images/", "")
-                exists = (IMAGE_CACHE_DIR / fname).exists()
-                return {"id": companion_id, "ok": True, "url": url, "file_exists": exists}
+                db.commit()
+                return {"id": companion_id, "ok": True, "url": url}
             else:
-                return {"id": companion_id, "ok": False, "error": "生成失败"}
+                return {"id": companion_id, "ok": False, "error": "生成失败或COS上传失败"}
     except Exception as e:
         return {"id": companion_id, "ok": False, "error": str(e)}
 
 
 def process_moment(moment_id: int) -> dict:
+    """重新生成朋友圈配图并上传到COS"""
     try:
         with get_db() as db:
             moment = db.query(MomentORM).filter(MomentORM.id == moment_id).first()
@@ -88,41 +84,37 @@ def process_moment(moment_id: int) -> dict:
             prompt, img_style = generate_moment_image_prompt(moment.caption or "", profile=profile)
             url = generate_image_with_cache(prompt, style=img_style, width=600, height=600)
 
-            if url:
+            if url and url.startswith("http"):
                 moment.image_url = url
-                fname = url.replace("/data/images/", "") if url.startswith("/data/images/") else url
-                exists = (IMAGE_CACHE_DIR / fname).exists() if fname.startswith("data") or "/" not in fname else True
-                return {"id": moment_id, "ok": True, "url": url, "file_exists": exists}
+                db.commit()
+                return {"id": moment_id, "ok": True, "url": url}
             else:
-                return {"id": moment_id, "ok": False, "error": "生成失败"}
+                return {"id": moment_id, "ok": False, "error": "生成失败或COS上传失败"}
     except Exception as e:
         return {"id": moment_id, "ok": False, "error": str(e)}
 
 
 def main():
     print("=" * 60)
-    print("修复缺失的图片文件")
+    print("修复旧 /data/images/ 路径的图片记录")
     print("=" * 60)
-    print(f"IMAGE_CACHE_DIR: {IMAGE_CACHE_DIR}")
-    print(f"IMAGE_CACHE_DIR exists: {IMAGE_CACHE_DIR.exists()}")
 
-    # 1. 查找缺失头像文件
+    # 1. 查找使用旧路径的头像
     with get_db() as db:
         avatar_rows = db.query(CompanionORM).filter(
-            CompanionORM.avatar_url.like("/data/images/%")
+            (CompanionORM.avatar_url.like("/data/images/%")) |
+            (CompanionORM.avatar_url.like("%picsum%")) |
+            (CompanionORM.avatar_url.like("%dicebear%")) |
+            (CompanionORM.avatar_url.like("%placeholder%")) |
+            (CompanionORM.avatar_url == "__GENERATING__") |
+            (CompanionORM.avatar_url.is_(None)) |
+            (CompanionORM.avatar_url == "")
         ).all()
-        missing_avatars = []
-        for r in avatar_rows:
-            fname = r.avatar_url.replace("/data/images/", "")
-            exists = (IMAGE_CACHE_DIR / fname).exists()
-            if not exists:
-                missing_avatars.append(r.id)
-                if len(missing_avatars) <= 3:
-                    print(f"  Missing avatar: {r.name} -> {fname}")
+        missing_avatars = [r.id for r in avatar_rows]
 
-    print(f"\n缺失头像文件: {len(missing_avatars)} 个")
+    print(f"\n需要修复的头像: {len(missing_avatars)} 个")
 
-    # 2. 查找缺失或异常朋友圈配图文件（包括x.ai临时URL、picsum、placeholder、无效本地文件）
+    # 2. 查找使用旧路径或异常的朋友圈配图
     with get_db() as db:
         moment_rows = db.query(MomentORM).filter(
             (MomentORM.image_url.like("/data/images/%")) |
@@ -133,18 +125,9 @@ def main():
             (MomentORM.image_url.is_(None)) |
             (MomentORM.image_url == "")
         ).all()
-        missing_moments = []
-        for r in moment_rows:
-            url = r.image_url or ""
-            if url.startswith("/data/images/"):
-                fname = url.replace("/data/images/", "")
-                if not (IMAGE_CACHE_DIR / fname).exists() or (IMAGE_CACHE_DIR / fname).stat().st_size < 1000:
-                    missing_moments.append(r.id)
-            else:
-                # 非本地URL（如x.ai临时链接）视为需要重新生成
-                missing_moments.append(r.id)
+        missing_moments = [r.id for r in moment_rows]
 
-    print(f"缺失朋友圈配图文件: {len(missing_moments)} 条")
+    print(f"需要修复的朋友圈配图: {len(missing_moments)} 条")
 
     total_start = time.time()
 
@@ -158,11 +141,8 @@ def main():
             futures = {executor.submit(process_avatar, cid): cid for cid in missing_avatars}
             for i, future in enumerate(as_completed(futures), 1):
                 result = future.result()
-                if result["ok"] and result.get("file_exists"):
+                if result["ok"]:
                     success += 1
-                elif result["ok"] and not result.get("file_exists"):
-                    failed += 1
-                    print(f"  [{i}] 头像文件未保存 ID={result['id']}: {result['url']}")
                 else:
                     failed += 1
                     print(f"  [{i}] 头像失败 ID={result['id']}: {result.get('error', '')}")
@@ -184,12 +164,8 @@ def main():
             futures = {executor.submit(process_moment, mid): mid for mid in missing_moments}
             for i, future in enumerate(as_completed(futures), 1):
                 result = future.result()
-                if result["ok"] and result.get("file_exists"):
+                if result["ok"]:
                     success += 1
-                elif result["ok"] and not result.get("file_exists"):
-                    failed += 1
-                    if failed <= 3:
-                        print(f"  [{i}] 朋友圈文件未保存 ID={result['id']}: {result['url']}")
                 else:
                     failed += 1
                     if failed <= 3:

@@ -110,13 +110,6 @@ _IMAGE_THEMES = {
 }
 
 
-def _get_random_image_url(theme: str) -> str:
-    """生成随机配图 URL（使用 Unsplash Source）"""
-    # 使用 picsum 或 unsplash 的随机图
-    # 为了稳定性，使用固定的高质量图片池 + 随机参数防缓存
-    width, height = 600, 600
-    seed = random.randint(1, 100000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
 
 
 def _build_moment_prompt(companion: Companion, lang: str = "zh") -> str:

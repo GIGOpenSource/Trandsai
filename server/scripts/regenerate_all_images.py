@@ -16,7 +16,6 @@ from services.image_generation import (
     generate_avatar_prompt,
     generate_moment_image_prompt,
     generate_image_with_cache,
-    IMAGE_CACHE_DIR,
 )
 
 
