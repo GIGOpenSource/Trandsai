@@ -30,7 +30,7 @@ from services.culture_data import (
 from services.image_generation import generate_image_with_cache
 from services.async_tasks import start_avatar_generation, start_moment_image_generation
 
-router = APIRouter()
+router = APIRouter(tags=["管理后台"])
 logger = logging.getLogger(__name__)
 
 
@@ -125,8 +125,8 @@ async def admin_auth_required(authorization: str = Header(...)):
 
 
 @router.post("/api/admin/login",
-             summary="管理员",
-             tags=["管理端后台"],
+             summary="管理员登录",
+             tags=["管理后台"],
              description="使用用户名和密码登录，返回 Token",
              response_model=dict,
              responses={
@@ -156,7 +156,7 @@ async def admin_login(data: dict, lang: str = Depends(get_admin_lang)):
     return {"token": token}
 
 
-@router.get("/api/admin/stats")
+@router.get("/api/admin/stats",summary="获取系统统计")
 async def admin_stats(_token: str = Depends(admin_auth_required)):
     from core.database import UserCompanionStateORM
 
@@ -177,12 +177,12 @@ async def admin_stats(_token: str = Depends(admin_auth_required)):
     }
 
 
-@router.get("/api/admin/companions")
-async def admin_list_companions(_token: str = Depends(admin_auth_required)):
-    return get_companion_manager().list_all_for_any()
+@router.get("/api/admin/companions", summary="获取伴侣列表")
+async def admin_list_companions(_token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
+    return get_companion_manager().list_all_for_any(lang=lang)
 
 
-@router.delete("/api/admin/companions/{companion_id}")
+@router.delete("/api/admin/companions/{companion_id}", summary="删除伴侣")
 async def admin_delete_companion(companion_id: str, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     ok = get_companion_manager().delete(companion_id)
     if not ok:
@@ -190,15 +190,15 @@ async def admin_delete_companion(companion_id: str, _token: str = Depends(admin_
     return {"ok": True}
 
 
-@router.put("/api/admin/companions/{companion_id}")
+@router.put("/api/admin/companions/{companion_id}", summary="更新伴侣信息")
 async def admin_update_companion(companion_id: str, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     companion = get_companion_manager().update(companion_id, data)
     if not companion:
         raise HTTPException(status_code=404, detail=_get_error_msg("companion_not_found", lang))
-    return companion.to_dict()
+    return companion.to_dict(lang=lang)
 
 
-@router.get("/api/admin/companions/{companion_id}")
+@router.get("/api/admin/companions/{companion_id}", summary="获取伴侣详情")
 async def admin_get_companion(companion_id: str, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """获取单个伴侣详情（供编辑表单使用），合并 profile 和 agent-config 中的 system_prompt"""
     cm = get_companion_manager()
@@ -214,7 +214,7 @@ async def admin_get_companion(companion_id: str, _token: str = Depends(admin_aut
             if not companion:
                 raise HTTPException(status_code=404, detail=_get_error_msg("companion_not_found", lang))
 
-    data = companion.to_dict() if hasattr(companion, 'to_dict') else {}
+    data = companion.to_dict(lang=lang) if hasattr(companion, 'to_dict') else {}
 
     # 合并 agent-config 中的 system_prompt_*
     with get_db() as db:
@@ -235,18 +235,18 @@ async def admin_get_companion(companion_id: str, _token: str = Depends(admin_aut
     return data
 
 
-@router.get("/api/admin/knowledge")
+@router.get("/api/admin/knowledge", summary="获取知识库列表")
 async def admin_list_knowledge(category: str = None, language: str = None, _token: str = Depends(admin_auth_required)):
     return knowledge_base.list_entries(category=category, language=language)
 
 
-@router.post("/api/admin/knowledge")
+@router.post("/api/admin/knowledge", summary="添加知识条目")
 async def admin_add_knowledge(data: dict, _token: str = Depends(admin_auth_required)):
     entry = knowledge_base.add_entry(data)
     return entry.model_dump()
 
 
-@router.delete("/api/admin/knowledge/{entry_id}")
+@router.delete("/api/admin/knowledge/{entry_id}", summary="删除知识条目")
 async def admin_delete_knowledge(entry_id: str, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     ok = knowledge_base.delete_entry(entry_id)
     if not ok:
@@ -254,18 +254,18 @@ async def admin_delete_knowledge(entry_id: str, _token: str = Depends(admin_auth
     return {"ok": True}
 
 
-@router.get("/api/admin/moments")
+@router.get("/api/admin/moments", summary="获取朋友圈列表")
 async def admin_list_moments(limit: int = 50, offset: int = 0, lang: Optional[str] = None, _token: str = Depends(admin_auth_required)):
     from services.moments import get_moments_feed
-    # 传递 lang 参数，确保管理端列表本地化与用户端一致（修复之前未传 lang 的问题）
-    effective_lang = lang or "zh"
+    # 优先用查询参数 ?lang=（admin 可强制），否则用 Accept-Language
+    effective_lang = lang or admin_lang
     moments = get_moments_feed(limit=limit, offset=offset, lang=effective_lang)
     with get_db() as db:
         total = db.query(func.count(MomentORM.id)).scalar() or 0
     return {"moments": moments, "total": total}
 
 
-@router.delete("/api/admin/moments")
+router.delete("/api/admin/moments", summary="批量删除朋友圈")
 async def admin_clear_all_moments(_token: str = Depends(admin_auth_required)):
     """清空所有朋友圈（包括点赞和评论）"""
     from services.moments import clear_all_moments
@@ -273,7 +273,7 @@ async def admin_clear_all_moments(_token: str = Depends(admin_auth_required)):
     return {"ok": True, "deleted": count}
 
 
-@router.post("/api/admin/reset-all")
+@router.post("/api/admin/reset-all", summary="重置所有数据")
 async def admin_reset_all(data: Optional[dict] = None, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """一键清除全部数据（所有智能体、朋友圈、知识库、记忆文件等）。
     必须提供 confirm=yes_clear_all_data 才能执行，避免误操作。
@@ -323,7 +323,7 @@ async def admin_reset_all(data: Optional[dict] = None, _token: str = Depends(adm
     }
 
 
-@router.post("/api/admin/moments/regenerate")
+@router.post("/api/admin/moments/regenerate", summary="批量重新生成朋友圈")
 async def admin_regenerate_moments(data: Optional[dict] = None, _token: str = Depends(admin_auth_required)):
     """清空所有历史朋友圈并重新生成，可选参数 moments_per_companion 控制每个伴侣生成数量"""
     from services.moments import regenerate_moments_for_all
@@ -337,7 +337,7 @@ async def admin_regenerate_moments(data: Optional[dict] = None, _token: str = De
     return {"ok": True, "created": created}
 
 
-@router.post("/api/admin/moments/batch-generate")
+@@router.post("/api/admin/moments/batch-generate", summary="批量生成朋友圈")
 async def admin_batch_generate_moments(data: dict, _token: str = Depends(admin_auth_required)):
     """一键批量生成朋友圈，根据人设+文案自动生成配图。
     参数:
@@ -372,7 +372,7 @@ async def admin_batch_generate_moments(data: dict, _token: str = Depends(admin_a
     return {"ok": True, "created": created, "mode": "append"}
 
 
-@router.delete("/api/admin/moments/{moment_id}")
+@router.delete("/api/admin/moments/{moment_id}", summary="删除朋友圈")
 async def admin_delete_moment(moment_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     from services.moments import delete_moment
     ok = delete_moment(moment_id)
@@ -381,7 +381,7 @@ async def admin_delete_moment(moment_id: int, _token: str = Depends(admin_auth_r
     return {"ok": True}
 
 
-@router.post("/api/admin/moments/{moment_id}/regenerate-image")
+@router.post("/api/admin/moments/{moment_id}/regenerate-image", summary="重新生成朋友圈配图")
 async def admin_regenerate_moment_image(moment_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """重新生成指定朋友圈的配图"""
     from services.moments import regenerate_moment_image
@@ -391,28 +391,32 @@ async def admin_regenerate_moment_image(moment_id: int, _token: str = Depends(ad
     return {"ok": True, "image_url": new_url}
 
 
-@router.get("/api/admin/users")
-async def admin_list_users(_token: str = Depends(admin_auth_required)):
+@router.get("/api/admin/users", summary="获取用户列表")
+async def admin_list_users(_token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     from core.database import UserORM
     with get_db() as db:
         users = db.query(UserORM).order_by(UserORM.created_at.desc()).all()
         return [
-            {
-                "id": u.id,
-                "username": u.username,
-                "nickname": u.nickname,
-                "gender": u.gender,
-                "sexual_orientation": u.sexual_orientation,
-                "age": getattr(u, "age", None),
-                "region": (u.region or "") if getattr(u, "region", None) is not None else "",
-                "occupation": (u.occupation or "") if getattr(u, "occupation", None) is not None else "",
-                "created_at": u.created_at.isoformat() if u.created_at else None,
-            }
+            _localize_dict(
+                {
+                    "id": u.id,
+                    "username": u.username,
+                    "nickname": u.nickname,
+                    "gender": u.gender,
+                    "sexual_orientation": u.sexual_orientation,
+                    "age": getattr(u, "age", None),
+                    "region": (u.region or "") if getattr(u, "region", None) is not None else "",
+                    "occupation": (u.occupation or "") if getattr(u, "occupation", None) is not None else "",
+                    "created_at": u.created_at.isoformat() if u.created_at else None,
+                },
+                [("gender", "gender"), ("sexual_orientation", "sexual_orientation")],
+                lang,
+            )
             for u in users
         ]
 
 
-@router.post("/api/admin/knowledge/search")
+@router.post("/api/admin/knowledge/search", summary="搜索知识库")
 async def admin_search_knowledge(data: dict, _token: str = Depends(admin_auth_required)):
     query = data.get("query", "")
     top_k = data.get("top_k", 10)
@@ -422,14 +426,14 @@ async def admin_search_knowledge(data: dict, _token: str = Depends(admin_auth_re
     return {"results": results}
 
 
-@router.get("/api/admin/embedding-status")
+@router.get("/api/admin/embedding-status", summary="获取嵌入状态")
 async def admin_embedding_status(_token: str = Depends(admin_auth_required)):
     return get_embedding_status()
 
 
 # ===== 配置组管理 =====
 
-@router.get("/api/admin/config-groups")
+@router.get("/api/admin/config-groups", summary="获取配置组列表")
 async def admin_list_config_groups(_token: str = Depends(admin_auth_required)):
     with get_db() as db:
         rows = db.query(ConfigGroupORM).order_by(ConfigGroupORM.sort_order.asc(), ConfigGroupORM.id.asc()).all()
@@ -450,7 +454,7 @@ async def admin_list_config_groups(_token: str = Depends(admin_auth_required)):
         ]
 
 
-@router.get("/api/admin/config-groups/{group_id}")
+@router.get("/api/admin/config-groups/{group_id}", summary="获取配置组详情")
 async def admin_get_config_group(group_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         row = db.query(ConfigGroupORM).filter(ConfigGroupORM.id == group_id).first()
@@ -470,7 +474,7 @@ async def admin_get_config_group(group_id: int, _token: str = Depends(admin_auth
         }
 
 
-@router.post("/api/admin/config-groups")
+@router.post("/api/admin/config-groups", summary="创建配置组")
 async def admin_create_config_group(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     key = data.get("key", "").strip()
     name = data.get("name", "").strip()
@@ -535,7 +539,7 @@ async def admin_create_config_group(data: dict, _token: str = Depends(admin_auth
         }
 
 
-@router.put("/api/admin/config-groups/{group_id}")
+@router.put("/api/admin/config-groups/{group_id}", summary="更新配置组")
 async def admin_update_config_group(group_id: int, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         row = db.query(ConfigGroupORM).filter(ConfigGroupORM.id == group_id).first()
@@ -554,7 +558,7 @@ async def admin_update_config_group(group_id: int, data: dict, _token: str = Dep
     return {"ok": True}
 
 
-@router.delete("/api/admin/config-groups/{group_id}")
+@router.delete("/api/admin/config-groups/{group_id}", summary="删除配置组")
 async def admin_delete_config_group(group_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         row = db.query(ConfigGroupORM).filter(ConfigGroupORM.id == group_id).first()
@@ -564,7 +568,7 @@ async def admin_delete_config_group(group_id: int, _token: str = Depends(admin_a
     return {"ok": True}
 
 
-@router.get("/api/admin/config")
+@router.get("/api/admin/config", summary="获取系统配置")
 async def admin_config(_token: str = Depends(admin_auth_required)):
     return {
         "anthropic_ready": bool(os.getenv("ANTHROPIC_API_KEY", "")),
@@ -575,7 +579,7 @@ async def admin_config(_token: str = Depends(admin_auth_required)):
     }
 
 
-@router.post("/api/admin/config")
+@router.post("/api/admin/config", summary="更新系统配置")
 async def admin_update_config(data: dict, _token: str = Depends(admin_auth_required)):
     dotenv_path = str(BASE_DIR / "server" / ".env")
     updated = []
@@ -606,14 +610,14 @@ async def admin_update_config(data: dict, _token: str = Depends(admin_auth_requi
     return {"ok": True, "updated": updated}
 
 
-@router.post("/api/admin/config/test")
+@router.post("/api/admin/config/test", summary="测试模型连接")
 async def admin_test_config(data: dict, _token: str = Depends(admin_auth_required)):
     provider = data.get("provider") or os.getenv("MODEL_PROVIDER", "anthropic")
     result = test_llm_connection(provider=provider)
     return result
 
 
-@router.post("/api/admin/config-groups/{group_id}/test")
+@router.post("/api/admin/config-groups/{group_id}/test", summary="测试配置组连接")
 async def admin_test_config_group(
     group_id: int,
     data: Optional[dict] = Body(None),
@@ -701,7 +705,7 @@ async def admin_test_config_group(
         return {"ok": False, "error": f"未知配置类型: {config_type}"}
 
 
-@router.get("/api/admin/agent-config")
+@router.get("/api/admin/agent-config", summary="获取Agent配置")
 async def admin_get_agent_config(_token: str = Depends(admin_auth_required)):
     with get_db() as db:
         row = db.query(AgentConfigORM).first()
@@ -710,7 +714,7 @@ async def admin_get_agent_config(_token: str = Depends(admin_auth_required)):
     return {}
 
 
-@router.put("/api/admin/agent-config")
+@router.put("/api/admin/agent-config", summary="更新Agent配置")
 async def admin_put_agent_config(data: dict, _token: str = Depends(admin_auth_required)):
     with get_db() as db:
         row = db.query(AgentConfigORM).first()
@@ -723,7 +727,7 @@ async def admin_put_agent_config(data: dict, _token: str = Depends(admin_auth_re
     return {"ok": True}
 
 
-@router.get("/api/admin/companions/{companion_id}/agent-config")
+@router.get("/api/admin/companions/{companion_id}/agent-config", summary="获取伴侣Agent配置")
 async def admin_get_companion_agent_config(companion_id: str, _token: str = Depends(admin_auth_required)):
     with get_db() as db:
         row = db.query(CompanionAgentConfigORM).filter(
@@ -734,7 +738,7 @@ async def admin_get_companion_agent_config(companion_id: str, _token: str = Depe
     return {}
 
 
-@router.put("/api/admin/companions/{companion_id}/agent-config")
+@router.put("/api/admin/companions/{companion_id}/agent-config", summary="更新伴侣Agent配置")
 async def admin_put_companion_agent_config(companion_id: str, data: dict, _token: str = Depends(admin_auth_required)):
     with get_db() as db:
         row = db.query(CompanionAgentConfigORM).filter(
@@ -749,8 +753,8 @@ async def admin_put_companion_agent_config(companion_id: str, data: dict, _token
     return {"ok": True}
 
 
-@router.get("/api/admin/feedback")
-async def admin_list_feedback(_token: str = Depends(admin_auth_required)):
+@router.get("/api/admin/feedback", summary="获取反馈列表")
+async def admin_list_feedback(_token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         threads = db.query(FeedbackThreadORM).order_by(
             FeedbackThreadORM.updated_at.desc()
@@ -785,7 +789,7 @@ async def admin_list_feedback(_token: str = Depends(admin_auth_required)):
         ]
 
 
-@router.get("/api/admin/feedback/{thread_id}/messages")
+@router.get("/api/admin/feedback/{thread_id}/messages", summary="获取反馈详情")
 async def admin_get_feedback_messages(thread_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         thread = db.query(FeedbackThreadORM).filter(
@@ -817,7 +821,7 @@ async def admin_get_feedback_messages(thread_id: int, _token: str = Depends(admi
         }
 
 
-@router.get("/api/admin/chat-sessions/messages")
+@router.get("/api/admin/chat-sessions/messages", summary="获取聊天会话消息")
 async def admin_get_chat_session_messages(
     user_id: int,
     companion_id: str,
@@ -892,7 +896,7 @@ async def admin_get_chat_session_messages(
         }
 
 
-@router.get("/api/admin/chat-sessions")
+@router.get("/api/admin/chat-sessions", summary="获取聊天会话列表")
 async def admin_list_chat_sessions(
     _token: str = Depends(admin_auth_required),
     page: int = 1,
@@ -968,7 +972,7 @@ async def admin_list_chat_sessions(
     return {"total": total, "page": page, "page_size": page_size, "items": items}
 
 
-@router.delete("/api/admin/chat-sessions")
+@router.delete("/api/admin/chat-sessions", summary="批量删除聊天会话")
 async def admin_delete_chat_session(
     user_id: int = Query(..., ge=1, description="用户 ID"),
     companion_id: str = Query(..., min_length=1, max_length=32, description="智能体 ID"),
@@ -1033,7 +1037,7 @@ async def admin_delete_chat_session(
     return {"ok": True, "cleared_messages": clear_messages}
 
 
-@router.post("/api/admin/feedback/{thread_id}/reply")
+@router.post("/api/admin/feedback/{thread_id}/reply", summary="回复反馈")
 async def admin_reply_feedback(thread_id: int, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     content = (data.get("content") or "").strip()
     if not content:
@@ -1060,7 +1064,7 @@ async def admin_reply_feedback(thread_id: int, data: dict, _token: str = Depends
 
 # ===== Companions: Create =====
 
-@router.post("/api/admin/companions")
+@router.post("/api/admin/companions", summary="创建伴侣")
 async def admin_create_companion(data: dict, _token: str = Depends(admin_auth_required)):
     try:
         companion = get_companion_manager().create(data)
@@ -1325,7 +1329,7 @@ async def _batch_generate_companions_core(data: dict):
     }, ensure_ascii=False)
 
 
-@router.post("/api/admin/companions/batch-generate")
+@router.post("/api/admin/companions/batch-generate", summary="批量生成伴侣")
 async def admin_batch_generate_companions(data: dict, _token: str = Depends(admin_auth_required)):
     """批量生成智能体（传统接口，保持兼容）"""
     results = []
@@ -1342,7 +1346,7 @@ async def admin_batch_generate_companions(data: dict, _token: str = Depends(admi
     return {"ok": True, "created": 0, "companions": []}
 
 
-@router.post("/api/admin/companions/batch-generate-stream")
+@router.post("/api/admin/companions/batch-generate-stream", summary="流式批量生成伴侣")
 async def admin_batch_generate_companions_stream(data: dict, _token: str = Depends(admin_auth_required)):
     """批量生成智能体（SSE 流式接口，实时返回进度）"""
     import json
@@ -1423,7 +1427,7 @@ async def _batch_generate_all_langs_core(data: dict):
     }, ensure_ascii=False)
 
 
-@router.post("/api/admin/companions/batch-generate-all-langs-stream")
+@router.post("/api/admin/companions/batch-generate-all-langs-stream", summary="多语言流式批量生成伴侣")
 async def admin_batch_generate_all_langs_stream(data: dict, _token: str = Depends(admin_auth_required)):
     """为所有语言批量生成智能体（SSE 流式接口）"""
 
@@ -1444,7 +1448,7 @@ async def admin_batch_generate_all_langs_stream(data: dict, _token: str = Depend
 
 # ===== Moments: Create / Update =====
 
-@router.post("/api/admin/moments")
+@router.post("/api/admin/moments", summary="创建朋友圈")
 async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     companion_id = data.get("companion_id", "").strip()
     caption = data.get("caption", "").strip()
@@ -1500,7 +1504,7 @@ async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_requi
     }
 
 
-@router.put("/api/admin/moments/{moment_id}")
+@router.put("/api/admin/moments/{moment_id}", summary="更新朋友圈")
 async def admin_update_moment(moment_id: int, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         moment = db.query(MomentORM).filter(MomentORM.id == moment_id).first()
@@ -1525,7 +1529,7 @@ async def admin_update_moment(moment_id: int, data: dict, _token: str = Depends(
 
 # ===== Users: Create / Update / Delete =====
 
-@router.post("/api/admin/users")
+@router.post("/api/admin/users", summary="创建用户")
 async def admin_create_user(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
@@ -1580,7 +1584,7 @@ async def admin_create_user(data: dict, _token: str = Depends(admin_auth_require
         }
 
 
-@router.put("/api/admin/users/{user_id}")
+@router.put("/api/admin/users/{user_id}", summary="更新用户信息")
 async def admin_update_user(user_id: int, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         user = db.query(UserORM).filter(UserORM.id == user_id).first()
@@ -1623,7 +1627,7 @@ async def admin_update_user(user_id: int, data: dict, _token: str = Depends(admi
         }
 
 
-@router.get("/api/admin/users/{user_id}/companion-stats")
+@router.get("/api/admin/users/{user_id}/companion-stats", summary="获取用户伴侣统计")
 async def admin_user_companion_stats(user_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """列出该用户与各智能体的亲密度记录（含管理员手动写入）。"""
     with get_db() as db:
@@ -1657,7 +1661,7 @@ async def admin_user_companion_stats(user_id: int, _token: str = Depends(admin_a
         return {"items": out}
 
 
-@router.put("/api/admin/users/{user_id}/companion-stats/{companion_id}")
+@router.put("/api/admin/users/{user_id}/companion-stats/{companion_id}", summary="更新用户伴侣统计")
 async def admin_put_user_companion_stat(
     user_id: int,
     companion_id: str,
@@ -1727,7 +1731,7 @@ async def admin_put_user_companion_stat(
     return {"ok": True, "companion_id": companion_id, "affection": af}
 
 
-@router.delete("/api/admin/users/{user_id}")
+@router.delete("/api/admin/users/{user_id}", summary="删除用户")
 async def admin_delete_user(user_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         user = db.query(UserORM).filter(UserORM.id == user_id).first()
@@ -1742,7 +1746,7 @@ async def admin_delete_user(user_id: int, _token: str = Depends(admin_auth_requi
 
 # ===== Feedback: Create & Delete =====
 
-@router.post("/api/admin/feedback")
+@router.post("/api/admin/feedback", summary="创建反馈会话")
 async def admin_create_feedback(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """管理员创建反馈线程（修复前端新建功能）"""
     user_name = (data.get("user_name") or "管理员录入").strip()
@@ -1769,7 +1773,7 @@ async def admin_create_feedback(data: dict, _token: str = Depends(admin_auth_req
     return {"ok": True, "id": thread.id, "thread": {"id": thread.id, "user_name": user_name, "status": "open"}}
 
 
-@router.delete("/api/admin/feedback/{thread_id}")
+@router.delete("/api/admin/feedback/{thread_id}", summary="删除反馈会话")
 async def admin_delete_feedback(thread_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         thread = db.query(FeedbackThreadORM).filter(FeedbackThreadORM.id == thread_id).first()
@@ -1783,7 +1787,7 @@ async def admin_delete_feedback(thread_id: int, _token: str = Depends(admin_auth
 
 # ===== Knowledge: Update =====
 
-@router.put("/api/admin/knowledge/{entry_id}")
+@router.put("/api/admin/knowledge/{entry_id}", summary="更新知识条目")
 async def admin_update_knowledge(entry_id: str, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     entry = knowledge_base.update_entry(entry_id, data)
     if not entry:
@@ -1793,7 +1797,7 @@ async def admin_update_knowledge(entry_id: str, data: dict, _token: str = Depend
 
 # ===== Image Generation =====
 
-@router.post("/api/admin/generate-image")
+@router.post("/api/admin/generate-image", summary="生成图片")
 async def admin_generate_image(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """通用图片生成接口，对接 Pollinations.ai"""
     from services.image_generation import generate_image
@@ -1829,7 +1833,7 @@ def _parse_date(date_str: Optional[str]):
         return None
 
 
-@router.get("/api/admin/analytics")
+@router.get("/api/admin/analytics",summary="获取分析数据")
 async def admin_analytics(
     page_views: int = 1,
     button_clicks: int = 1,
@@ -1955,7 +1959,7 @@ async def admin_analytics(
     return result
 
 
-@router.get("/api/admin/analytics/export")
+@router.get("/api/admin/analytics/export", summary="导出分析数据")
 async def admin_analytics_export(
     type: str = "all",
     start_date: str = None,
@@ -2124,7 +2128,7 @@ async def admin_analytics_export(
 
 # ===== 系统通知管理 =====
 
-@router.get("/api/admin/notifications")
+@router.get("/api/admin/notifications", summary="获取通知列表")
 async def admin_list_notifications(_token: str = Depends(admin_auth_required)):
     with get_db() as db:
         rows = db.query(SystemNotificationORM).order_by(SystemNotificationORM.created_at.desc()).all()
@@ -2141,7 +2145,7 @@ async def admin_list_notifications(_token: str = Depends(admin_auth_required)):
         ]
 
 
-@router.post("/api/admin/notifications")
+@router.post("/api/admin/notifications", summary="创建通知")
 async def admin_create_notification(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     title = data.get("title", "").strip()
     content = data.get("content", "").strip()
@@ -2164,7 +2168,7 @@ async def admin_create_notification(data: dict, _token: str = Depends(admin_auth
         }
 
 
-@router.delete("/api/admin/notifications/{notification_id}")
+@router.delete("/api/admin/notifications/{notification_id}", summary="删除通知")
 async def admin_delete_notification(notification_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     with get_db() as db:
         notif = db.query(SystemNotificationORM).filter(SystemNotificationORM.id == notification_id).first()
@@ -2175,7 +2179,7 @@ async def admin_delete_notification(notification_id: int, _token: str = Depends(
 
 
 # ===== 批量操作API =====
-@router.post("/api/admin/notifications/batch-delete")
+@router.post("/api/admin/notifications/batch-delete", summary="批量删除通知")
 async def admin_batch_delete_notifications(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """批量删除系统通知"""
     ids = data.get("ids", [])
@@ -2193,7 +2197,7 @@ async def admin_batch_delete_notifications(data: dict, _token: str = Depends(adm
     return {"ok": True, "deleted": deleted, "total": len(int_ids)}
 
 
-@router.post("/api/admin/users/batch-delete")
+@router.post("/api/admin/users/batch-delete", summary="批量删除用户")
 async def admin_batch_delete_users(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """批量删除用户"""
     ids = data.get("ids", [])
@@ -2211,7 +2215,7 @@ async def admin_batch_delete_users(data: dict, _token: str = Depends(admin_auth_
     return {"ok": True, "deleted": deleted, "total": len(int_ids)}
 
 
-@router.post("/api/admin/knowledge/batch-delete")
+@router.post("/api/admin/knowledge/batch-delete", summary="批量删除知识条目")
 async def admin_batch_delete_knowledge(data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     """批量删除知识条目"""
     ids = data.get("ids", [])
@@ -2227,7 +2231,7 @@ async def admin_batch_delete_knowledge(data: dict, _token: str = Depends(admin_a
 
 # ===== 公开 API：获取系统通知（供前端使用） =====
 
-@router.get("/api/notifications")
+@router.get("/api/notifications", summary="获取系统通知", tags=["反馈"])
 async def public_list_notifications(language: str = "zh", limit: int = 20):
     supported_langs = {"zh", "en", "ja", "ko", "pt", "es", "id"}
     if language not in supported_langs:
