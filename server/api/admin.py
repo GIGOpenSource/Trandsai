@@ -178,8 +178,8 @@ async def admin_stats(_token: str = Depends(admin_auth_required)):
 
 
 @router.get("/api/admin/companions", summary="获取伴侣列表")
-async def admin_list_companions(_token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
-    return get_companion_manager().list_all_for_any(lang=lang)
+async def admin_list_companions(_token: str = Depends(admin_auth_required)):
+    return get_companion_manager().list_all_for_any()
 
 
 @router.delete("/api/admin/companions/{companion_id}", summary="删除伴侣")
@@ -255,7 +255,7 @@ async def admin_delete_knowledge(entry_id: str, _token: str = Depends(admin_auth
 
 
 @router.get("/api/admin/moments", summary="获取朋友圈列表")
-async def admin_list_moments(limit: int = 50, offset: int = 0, lang: Optional[str] = None, _token: str = Depends(admin_auth_required)):
+async def admin_list_moments(limit: int = 50, offset: int = 0, lang: Optional[str] = None, _token: str = Depends(admin_auth_required), admin_lang: str = Depends(get_admin_lang)):
     from services.moments import get_moments_feed
     # 优先用查询参数 ?lang=（admin 可强制），否则用 Accept-Language
     effective_lang = lang or admin_lang
