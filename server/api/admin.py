@@ -29,8 +29,8 @@ from services.culture_data import (
     infer_language_from_city,
     normalize_batch_generation_lang,
 )
-from services.image_generation import generate_image_with_cache
-from services.async_tasks import start_avatar_generation, start_moment_image_generation
+from services.image_generation import generate_image_with_cache, generate_moment_image_prompt
+from services.async_tasks import start_avatar_generation
 
 router = APIRouter(tags=["管理后台"])
 logger = logging.getLogger(__name__)
@@ -391,7 +391,7 @@ async def admin_delete_moment(moment_id: int, _token: str = Depends(admin_auth_r
 
 
 @router.post("/api/admin/moments/{moment_id}/regenerate-image", summary="重新生成朋友圈配图")
-async def admin_regenerate_moment_image(moment_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
+async def admin_regenerate_moment_image(moment_id: int,  lang: str = Depends(get_admin_lang)):
     """重新生成指定朋友圈的配图"""
     from services.moments import regenerate_moment_image
     new_url = regenerate_moment_image(moment_id)
@@ -1475,14 +1475,22 @@ async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_requi
         companion_language = (companion.language or "").strip()
         companion_city = (companion.city or "").strip()
 
-        # 如果没有提供配图，先标记为生成中并启动后台异步任务
+        # 如果没有上传图片，同步生成配图
         if not image_url:
-            image_url = "__GENERATING__"
+            profile_dict = {
+                "gender": companion.gender or "女",
+                "age": companion.age or 22,
+                "city": companion_city,
+                "personality": companion.personality or "",
+                "hobbies": companion.hobbies or "",
+                "mbti": companion.mbti or "",
+            }
+            img_prompt, img_style = generate_moment_image_prompt(caption, profile=profile_dict)
+            image_url = generate_image_with_cache(img_prompt, style=img_style, width=600, height=600)
 
         caption_lang = (
             companion_language
             or infer_language_from_city(companion_city)
-            or "zh"
         )
 
         moment = MomentORM(
@@ -1497,19 +1505,14 @@ async def admin_create_moment(data: dict, _token: str = Depends(admin_auth_requi
         # 在 session 内提取 created_at
         created_at = moment.created_at
 
-    # 启动后台异步生成配图
-    if image_url == "__GENERATING__":
-        start_moment_image_generation(moment_id, caption)
-
     return {
         "id": moment_id,
         "companion_id": companion_id,
         "caption": caption,
-        "image_url": image_url if image_url != "__GENERATING__" else None,
-        "image_generating": image_url == "__GENERATING__",
+        "image_url": image_url,
         "likes_count": 0,
         "comments_count": 0,
-        "created_at": serialize_datetime_beijing(created_at),
+        "created_at": serialize_datetime(created_at),
     }
 
 
