@@ -713,7 +713,7 @@ class CompanionManager:
             return None
 
         # 更新内存中的 profile（添加 mbti 支持）
-        updatable = {"name", "age", "gender", "city", "personality", "background", "speech_style", "hobbies", "values", "fears", "love_view", "daily_routine", "favorite_things", "mbti", "sexual_orientation", "life_story", "cultural_values", "gender_perspective", "avatar_url", "created_by", "language"}
+        updatable = {"name", "age", "gender", "city", "personality", "background", "speech_style", "hobbies", "values", "fears", "love_view", "daily_routine", "favorite_things", "mbti", "sexual_orientation", "life_story", "cultural_values", "gender_perspective", "avatar_url", "created_by", "language","created_at"}
         for key in updatable:
             if key in data:
                 setattr(companion.profile, key, data[key])
