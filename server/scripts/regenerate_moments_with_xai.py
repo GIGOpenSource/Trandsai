@@ -27,7 +27,7 @@ def get_xai_config():
 def generate_image_with_xai(prompt: str, config: dict) -> str:
     """调用 x.ai images/generations API 生成图片，返回图片 URL"""
     api_key = config.get("api_key", "")
-    model = config.get("model", "grok-2-image")
+    model = config.get("model", "grok-imagine-image-quality")
     base_url = config.get("base_url", "https://api.x.ai/v1/images/generations")
 
     if not api_key:

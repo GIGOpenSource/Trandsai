@@ -367,7 +367,7 @@ def generate_image_with_xai(prompt: str, width: int = 1024, height: int = 1024, 
         logger.info("xAI image generation skipped: missing XAI_API_KEY")
         return None
 
-    model = (config or {}).get("model", "grok-2-image")
+    model = (config or {}).get("model", "grok-imagine-image-quality")
     base_url = (config or {}).get("base_url", _XAI_IMAGE_API_URL)
 
     try:

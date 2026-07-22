@@ -198,7 +198,7 @@ async def lifespan(app: FastAPI):
                 "config_json": {
                     "provider": "xai",
                     "api_key": os.getenv("XAI_API_KEY", ""),
-                    "model": "grok-2-image",
+                    "model": "grok-imagine-image-quality",
                     "base_url": "https://api.x.ai/v1/images/generations",
                     "timeout": 120
                 }
