@@ -306,10 +306,6 @@ app = FastAPI(
             "description": "社区帖子的发布、互动和搜索",
         },
     ],
-    swagger_ui_init_oauth={
-        "usePkceWithAuthorizationCodeGrant": True,
-        "clientId": "trandsai-swagger",
-    }
 )
 app.add_middleware(
     CORSMiddleware,
@@ -331,18 +327,24 @@ def custom_openapi():
       routes=app.routes,
   )
 
-  # 添加安全方案
+  # 添加两种安全方案
   openapi_schema["components"]["securitySchemes"] = {
       "BearerAuth": {
           "type": "http",
           "scheme": "bearer",
           "bearerFormat": "Token",
-          "description": "输入 Token（不需要 Bearer 前缀）"
+          "description": "管理端认证：输入管理 Token（不需要 Bearer 前缀）"
+      },
+      "XToken": {
+          "type": "apiKey",
+          "in": "header",
+          "name": "x-token",
+          "description": "用户端认证：输入用户 Token"
       }
   }
 
-  # 全局应用安全方案
-  openapi_schema["security"] = [{"BearerAuth": []}]
+  # 全局：BearerAuth 或 XToken 二选一
+  openapi_schema["security"] = [{"BearerAuth": []}, {"XToken": []}]
 
   app.openapi_schema = openapi_schema
   return app.openapi_schema

@@ -7,6 +7,7 @@ from typing import Optional
 
 from dotenv import set_key
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, func, nullslast
 
@@ -32,6 +33,20 @@ from services.async_tasks import start_avatar_generation, start_moment_image_gen
 
 router = APIRouter(tags=["管理后台"])
 logger = logging.getLogger(__name__)
+
+
+# ===== 请求/响应模型 =====
+
+class AdminLoginRequest(BaseModel):
+    # username: str = Field(..., description="管理员用户名", examples=["admin"])
+    password: str = Field(..., description="管理员密码", examples=["your_password"])
+
+class AdminLoginResponse(BaseModel):
+    token: str = Field(..., description="认证 Token，后续请求通过 Bearer 头传递")
+
+class ErrorResponse(BaseModel):
+    error: str = Field(..., description="错误信息")
+    status_code: int = Field(..., description="HTTP 状态码")
 
 
 # ===== 后端错误信息多语言 =====
@@ -127,33 +142,26 @@ async def admin_auth_required(authorization: str = Header(...)):
 @router.post("/api/admin/login",
              summary="管理员登录",
              tags=["管理后台"],
-             description="使用用户名和密码登录，返回 Token",
-             response_model=dict,
+             description="使用管理员密码登录，返回认证 Token（24小时有效）",
+             response_model=AdminLoginResponse,
              responses={
-                 200: {
-                     "description": "登录成功",
-                     "content": {
-                         "application/json": {
-                             "example": {
-                                 "token": "abc123...",
-                                 "user_id": 1,
-                                 "nickname": "用户昵称"
-                             }
-                         }
-                     }
-                 },
-                 401: {"description": "用户名或密码错误"}
-             }
-             )
-async def admin_login(data: dict, lang: str = Depends(get_admin_lang)):
-    password = data.get("password", "")
+                 200: {"description": "登录成功", "model": AdminLoginResponse},
+                 401: {"description": "密码错误", "model": ErrorResponse},
+                 500: {"description": "服务器配置错误", "model": ErrorResponse},
+             })
+async def admin_login(body: AdminLoginRequest, lang: str = Depends(get_admin_lang)):
+    """管理员登录接口
+
+    - **username**: 管理员用户名（仅作标识，实际以密码验证为准）
+    - **password**: 管理员密码，需与环境变量 ADMIN_PASSWORD 一致
+    """
     try:
-        token = create_token(password)
+        token = create_token(body.password)
     except ValueError:
         raise HTTPException(status_code=500, detail=_get_error_msg("server_error", lang))
     if not token:
         raise HTTPException(status_code=401, detail=_get_error_msg("wrong_password", lang))
-    return {"token": token}
+    return AdminLoginResponse(token=token)
 
 
 @router.get("/api/admin/stats",summary="获取系统统计")

@@ -7,8 +7,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Header, HTTPException
 
-from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserCompanionStateORM, UserORM, get_db
-from core.auth import generate_token, delete_token, verify_token as redis_verify_token
+from core.database import CompanionORM, CompanionStateORM, UserCompanionStateORM, UserORM, get_db
+from core.auth import (
+    generate_token, delete_token, verify_token as redis_verify_token,
+    generate_admin_token, verify_admin_token, delete_admin_token,
+    clear_all_admin_tokens as _redis_clear_admin_tokens,
+)
 router = APIRouter(tags=["认证"])
 
 _PBKDF2_ROUNDS = 200_000
@@ -59,38 +63,20 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     return secrets.compare_digest(_legacy_password_hash(password), stored_hash)
 
 
-# ===== 管理员 Token（数据库持久化存储，24小时有效）=====
-# 保留此变量供外部清空所有 token 时使用（如修改密码后）
-_admin_token_store: dict[str, dict] = {}
+# ===== 管理员 Token（Redis 存储，24小时有效）=====
 
 
 def create_token(password: str) -> Optional[str]:
-    """验证密码并生成 24 小时有效 Token，持久化到数据库"""
+    """验证密码并生成 24 小时有效 Token，存储到 Redis"""
     if password != _get_admin_password():
         return None
-    token = _hash_token(f"{password}{time.time()}")
-    expire = datetime.now(timezone.utc) + timedelta(hours=24)
-    with get_db() as db:
-        db.add(AdminTokenORM(token=token, expire_at=expire))
-    # 同时写入内存缓存，避免同一进程内重复查库
-    _admin_token_store[token] = {"expire": expire.timestamp()}
-    return token
+    password_hash = _hash_token(password)
+    return generate_admin_token(password_hash)
 
 
 def verify_token(token: str) -> bool:
-    """校验管理员 Token 是否有效（查库并清理过期 token）"""
-    now = datetime.now(timezone.utc)
-    with get_db() as db:
-        # 先清理所有过期 token
-        expired = db.query(AdminTokenORM).filter(AdminTokenORM.expire_at < now).all()
-        for row in expired:
-            db.delete(row)
-            _admin_token_store.pop(row.token, None)
-        # 查询当前 token
-        row = db.query(AdminTokenORM).filter(AdminTokenORM.token == token).first()
-        if not row:
-            return False
-        return True
+    """校验管理员 Token 是否有效（查 Redis）"""
+    return verify_admin_token(token)
 
 
 # ===== 用户 Token（数据库存储，7天有效，服务器重启不丢失）=====
@@ -354,9 +340,7 @@ async def user_update_me(data: dict, x_token: Optional[str] = Header(None)):
 
 def clear_all_admin_tokens():
     """清空所有管理员 token（如修改密码后调用）"""
-    with get_db() as db:
-        db.query(AdminTokenORM).delete()
-    _admin_token_store.clear()
+    _redis_clear_admin_tokens()
 
 
 @router.get("/api/users/stats", summary="获取用户统计数据")

@@ -78,3 +78,55 @@ def delete_token(token: str) -> bool:
       return r.delete(f"token:{token}") > 0
   except Exception:
       return False
+
+
+# ===== 管理员 Token（Redis 存储，24小时有效）=====
+
+ADMIN_TOKEN_EXPIRE_SECONDS = 24 * 3600  # 24 小时
+
+
+def generate_admin_token(password_hash: str) -> str:
+    """生成管理员 Token 并存储到 Redis，返回 token"""
+    salt = secrets.token_hex(16)
+    raw = f"admin:{password_hash}:{datetime.now(timezone.utc).isoformat()}:{salt}"
+    token = hashlib.sha256(raw.encode()).hexdigest()[:32]
+
+    r = get_redis()
+    r.setex(
+        f"admin_token:{token}",
+        ADMIN_TOKEN_EXPIRE_SECONDS,
+        "admin"
+    )
+    return token
+
+
+def verify_admin_token(token: str) -> bool:
+    """验证管理员 Token 是否有效"""
+    if not token:
+        return False
+    try:
+        r = get_redis()
+        return r.exists(f"admin_token:{token}") == 1
+    except Exception:
+        return False
+
+
+def delete_admin_token(token: str) -> bool:
+    """删除单个管理员 Token"""
+    try:
+        r = get_redis()
+        return r.delete(f"admin_token:{token}") > 0
+    except Exception:
+        return False
+
+
+def clear_all_admin_tokens() -> int:
+    """清空所有管理员 Token（修改密码后调用），返回删除数量"""
+    try:
+        r = get_redis()
+        keys = r.keys("admin_token:*")
+        if keys:
+            return r.delete(*keys)
+        return 0
+    except Exception:
+        return 0
