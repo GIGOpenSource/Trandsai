@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, WebSocket, WebSocketDisconnect
 from langchain_core.messages import SystemMessage
+from pydantic import BaseModel
 from starlette.websockets import WebSocketState
 from typing import List, Optional, Tuple
 
@@ -600,8 +601,20 @@ def _extract_json(text: str) -> dict:
         raise
 
 
-@router.post("/companions/generate",tags=["伴侣"], summary="AI 生成伴侣人设")
-async def api_generate_persona(data: dict):
+class PersonaGenerateRequest(BaseModel):
+    name: str
+    age: int = 22
+    gender: str = "女"
+    sexual_orientation: str = ""
+    city: str
+    personality: str
+    mbti: str = ""
+    lang: str = "zh"
+
+
+@router.post("/companions/generate",tags=["伴侣"], summary="AI 生成伴侣人设"
+             ,)
+async def api_generate_persona(data: PersonaGenerateRequest):
     """根据基础信息 AI 自动生成完整人设"""
     name = data.get("name", "")
     age = data.get("age", 22)
