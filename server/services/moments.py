@@ -1604,6 +1604,8 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
                     ai_reply = {
                         "id": reply.id,
                         "is_user": False,
+                        "is_me": False,  # AI 发的，不是当前用户
+                        "is_reply_me": True,  # AI 回复的是用户的评论
                         "companion_id": moment_companion_id,
                         "companion_name": poster.profile.name,
                         "content": reply_text,
@@ -1614,12 +1616,22 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     except Exception as e:
         logger.warning("[Moments] AI 回复用户评论失败: %s", e)
 
+    # 检查是否回复的是自己的评论
+    is_reply_me = False
+    # if parent_id:
+    #     with get_db() as db:
+    #         parent = db.query(MomentCommentORM).filter_by(id=parent_id).first()
+    #         if parent and parent.user_device_id == device_id:
+    #             is_reply_me = True
+
     result = {
         "ok": True,
         "id": comment_id,
         "content": content,
         "created_at": comment_created_at,
         "parent_id": parent_id,
+        "is_me": True,  # 当前用户发的评论
+        "is_reply_me": True,  # 回复的是自己的评论
     }
     if ai_reply:
         result["ai_reply"] = ai_reply
