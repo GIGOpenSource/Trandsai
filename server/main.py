@@ -269,6 +269,26 @@ app = FastAPI(
             "name": "管理后台",
             "description": "管理员专用接口",
         },
+        {
+            "name": "数据分析",
+            "description": "页面浏览和用户行为统计",
+        },
+        {
+            "name": "知识库",
+            "description": "文化知识库搜索与查询",
+        },
+        {
+            "name": "文化数据",
+            "description": "姓名和城市等文化数据生成",
+        },
+        {
+            "name": "反馈",
+            "description": "用户反馈和问题提交",
+        },
+        {
+            "name": "社区",
+            "description": "社区帖子的发布、互动和搜索",
+        },
     ],
     swagger_ui_init_oauth={
         "usePkceWithAuthorizationCodeGrant": True,
@@ -370,7 +390,28 @@ if ADMIN_DIR.exists():
     app.mount("/admin", StaticFiles(directory=str(ADMIN_DIR), html=True), name="admin")
 
 
-@app.get("/")
+@app.get("/",
+         summary="API 根路径",
+         description="返回 API 基本信息",
+         tags=["系统"],
+         responses={
+             200: {
+                 "description": "成功",
+                 "content": {
+                     "application/json": {
+                         "example": {
+                             "service": "trandsai API",
+                             "version": "1.0.0",
+                             "status": "running",
+                             "docs": "/docs",
+                             "redoc": "/redoc",
+                             "health": "/health",
+                             "openapi": "/openapi.json"
+                         }
+                     }
+                 }
+             }
+         })
 async def root():
     return {
         "service": "trandsai API",
