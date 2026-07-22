@@ -514,33 +514,33 @@ def generate_image_with_cache(
     enhancement = _STYLE_ENHANCEMENTS.get(style, _STYLE_ENHANCEMENTS["anime"])
     full_prompt = f"{prompt}. {enhancement}"
 
-    # 主路径1：阿里云百炼生成 -> 上传到COS -> 返回COS URL
-    configs = _get_active_image_gen_configs()
-    alibaba_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "alibaba"]
-    for config in alibaba_configs:
-        url = generate_image_with_alibaba(full_prompt, width, height, config=config)
-        if not url:
-            continue
-        cos_url = _download_and_upload_to_cos(url)
-        if cos_url and cos_url.startswith("http"):
-            return cos_url
-
-    # 主路径2：火山方舟生成 -> 上传到COS -> 返回COS URL
-    configs = _get_active_image_gen_configs()
-    volcano_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "volcano"]
-    for config in volcano_configs:
-        url = generate_image_with_volcano(full_prompt, width, height, config=config)
-        if not url:
-            continue
-        cos_url = _download_and_upload_to_cos(url)
-        if cos_url and cos_url.startswith("http"):
-            return cos_url
+    # # 主路径1：阿里云百炼生成 -> 上传到COS -> 返回COS URL
+    # configs = _get_active_image_gen_configs()
+    # alibaba_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "alibaba"]
+    # for config in alibaba_configs:
+    #     url = generate_image_with_alibaba(full_prompt, width, height, config=config)
+    #     if not url:
+    #         continue
+    #     cos_url = _download_and_upload_to_cos(url)
+    #     if cos_url and cos_url.startswith("http"):
+    #         return cos_url
+    #
+    # # 主路径2：火山方舟生成 -> 上传到COS -> 返回COS URL
+    # configs = _get_active_image_gen_configs()
+    # volcano_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "volcano"]
+    # for config in volcano_configs:
+    #     url = generate_image_with_volcano(full_prompt, width, height, config=config)
+    #     if not url:
+    #         continue
+    #     cos_url = _download_and_upload_to_cos(url)
+    #     if cos_url and cos_url.startswith("http"):
+    #         return cos_url
 
     # 主路径3：xAI (Grok) 生成 -> 上传到COS -> 返回COS URL
     xai_api_key = _XAI_API_KEY
     xai_config = None
     configs = _get_active_image_gen_configs()
-    xai_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "xai"]
+    xai_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "grok"]
     if xai_configs:
         xai_config = xai_configs[0]
     if xai_config or xai_api_key:

@@ -390,7 +390,7 @@ async def admin_delete_moment(moment_id: int, _token: str = Depends(admin_auth_r
 
 
 @router.post("/api/admin/moments/{moment_id}/regenerate-image", summary="重新生成朋友圈配图")
-async def admin_regenerate_moment_image(moment_id: int, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
+async def admin_regenerate_moment_image(moment_id: int,  lang: str = Depends(get_admin_lang)):
     """重新生成指定朋友圈的配图"""
     from services.moments import regenerate_moment_image
     new_url = regenerate_moment_image(moment_id)
