@@ -337,7 +337,7 @@ async def admin_regenerate_moments(data: Optional[dict] = None, _token: str = De
     return {"ok": True, "created": created}
 
 
-@@router.post("/api/admin/moments/batch-generate", summary="批量生成朋友圈")
+@router.post("/api/admin/moments/batch-generate", summary="批量生成朋友圈")
 async def admin_batch_generate_moments(data: dict, _token: str = Depends(admin_auth_required)):
     """一键批量生成朋友圈，根据人设+文案自动生成配图。
     参数:
