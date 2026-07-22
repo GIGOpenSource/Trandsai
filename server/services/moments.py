@@ -1621,19 +1621,29 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     except Exception as e:
         logger.warning("[Moments] AI 回复用户评论失败: %s", e)
 
+    # 判断是否是回复当前用户的评论
+    is_reply_me = False
+    if parent_id:
+        with get_db() as db:
+            parent_comment = db.query(MomentCommentORM).filter_by(id=parent_id).first()
+            if parent_comment and parent_comment.user_device_id == device_id:
+                is_reply_me = True
+
     result = {
         "ok": True,
         "id": comment_id,
         "content": content,
         "created_at": comment_created_at,
         "parent_id": parent_id,
+        "is_me": True,  # 用户自己发的评论
+        "is_reply_me": is_reply_me,  # 是否是回复自己的评论
     }
     if ai_reply:
         result["ai_reply"] = ai_reply
     return result
 
 
-def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
+def get_moment_comments(moment_id: int, limit: int = 50, device_id: str = "") -> List[dict]:
     """获取某条朋友圈的所有评论（包含 AI 评论和用户评论），支持回复关系"""
     with get_db() as db:
         comments = (
@@ -1652,9 +1662,11 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
 
         # 构建评论ID到评论者名称的映射，用于回复关系
         comment_author_map = {}
+        comment_device_map = {}  # 评论ID到设备ID的映射
         for c in comments:
             if c.user_device_id:
                 comment_author_map[c.id] = "我"
+                comment_device_map[c.id] = c.user_device_id
             else:
                 companion = companions_map.get(c.companion_id)
                 comment_author_map[c.id] = companion.name if companion else "Unknown"
@@ -1665,11 +1677,21 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
             if c.parent_id:
                 reply_to_name = comment_author_map.get(c.parent_id)
 
+            # 判断是否是回复当前用户的评论
+            is_reply_me = False
+            if c.parent_id and device_id:
+                parent_device_id = comment_device_map.get(c.parent_id)
+                if parent_device_id and parent_device_id == device_id:
+                    is_reply_me = True
+
             if c.user_device_id:
                 # 用户评论
+                is_me = (c.user_device_id == device_id) if device_id else False
                 result.append({
                     "id": c.id,
                     "is_user": True,
+                    "is_me": is_me,
+                    "is_reply_me": is_reply_me,
                     "companion_id": None,
                     "companion_name": "我",
                     "content": c.content,
@@ -1684,6 +1706,8 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
                 result.append({
                     "id": c.id,
                     "is_user": False,
+                    "is_me": False,
+                    "is_reply_me": is_reply_me,
                     "companion_id": c.companion_id,
                     "companion_name": companion_name,
                     "content": c.content,
@@ -1694,7 +1718,7 @@ def get_moment_comments(moment_id: int, limit: int = 50) -> List[dict]:
         return result
 
 
-def get_moment_comments_batch(moment_ids: list, limit: int = 10) -> dict:
+def get_moment_comments_batch(moment_ids: list, limit: int = 10, device_id: str = "") -> dict:
     """批量获取多条朋友圈评论，避免 feed N+1。"""
     if not moment_ids:
         return {}
@@ -1711,14 +1735,31 @@ def get_moment_comments_batch(moment_ids: list, limit: int = 10) -> dict:
             companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(ai_companion_ids)).all()
             companions_map = {c.id: c for c in companions_rows}
 
+        # 构建评论ID到设备ID的映射，用于回复关系
+        comment_device_map = {}
+        for c in comments:
+            if c.user_device_id:
+                comment_device_map[c.id] = c.user_device_id
+
         grouped: dict = {mid: [] for mid in moment_ids}
         for c in comments:
             if len(grouped.get(c.moment_id, [])) >= limit:
                 continue
+
+            # 判断是否是回复当前用户的评论
+            is_reply_me = False
+            if c.parent_id and device_id:
+                parent_device_id = comment_device_map.get(c.parent_id)
+                if parent_device_id and parent_device_id == device_id:
+                    is_reply_me = True
+
             if c.user_device_id:
+                is_me = (c.user_device_id == device_id) if device_id else False
                 grouped.setdefault(c.moment_id, []).append({
                     "id": c.id,
                     "is_user": True,
+                    "is_me": is_me,
+                    "is_reply_me": is_reply_me,
                     "companion_id": None,
                     "companion_name": "我",
                     "content": c.content,
@@ -1731,6 +1772,8 @@ def get_moment_comments_batch(moment_ids: list, limit: int = 10) -> dict:
                 grouped.setdefault(c.moment_id, []).append({
                     "id": c.id,
                     "is_user": False,
+                    "is_me": False,
+                    "is_reply_me": is_reply_me,
                     "companion_id": c.companion_id,
                     "companion_name": companion.name if companion else "Unknown",
                     "content": c.content,

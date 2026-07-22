@@ -49,7 +49,7 @@ async def api_list_moments(
             orientation=orientation or "",
         )
         moment_ids = [m["id"] for m in moments]
-        comments_map = get_moment_comments_batch(moment_ids, limit=10)
+        comments_map = get_moment_comments_batch(moment_ids, limit=10, device_id=device_id)
         for moment in moments:
             moment["comments"] = comments_map.get(moment["id"], [])
         total = count_moments_feed(
@@ -74,7 +74,7 @@ async def api_get_moment_detail(
         moment = get_moment_detail(moment_id, device_id=device_id)
         if not moment:
             return None
-        moment["comments"] = get_moment_comments(moment_id, limit=100)
+        moment["comments"] = get_moment_comments(moment_id, limit=100, device_id=device_id)
         return moment
 
     moment = await run_rest(_load)
