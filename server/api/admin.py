@@ -851,13 +851,19 @@ async def admin_get_chat_session_messages(
 
         total = (
             db.query(ShortTermMessageORM)
-            .filter(ShortTermMessageORM.companion_id == cid)
+            .filter(
+                ShortTermMessageORM.companion_id == cid,
+                ShortTermMessageORM.user_id == user_id,
+            )
             .count()
         )
 
         msgs = (
             db.query(ShortTermMessageORM)
-            .filter(ShortTermMessageORM.companion_id == cid)
+            .filter(
+                ShortTermMessageORM.companion_id == cid,
+                ShortTermMessageORM.user_id == user_id,
+            )
             .order_by(ShortTermMessageORM.id.asc())
             .offset(offset)
             .limit(limit)
