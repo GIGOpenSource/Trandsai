@@ -830,8 +830,8 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
     ui_lang_early = normalize_ui_language(websocket.query_params.get("lang", "zh"))
 
     # 安全优化：验证用户 token
-    # token = websocket.query_params.get("token")
-    token = websocket.headers.get("token")
+    token = websocket.query_params.get("token")
+    # token = websocket.headers.get("token")
     user_id = redis_verify_token(token) if token else None
     if not user_id:
         try:
