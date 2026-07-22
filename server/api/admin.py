@@ -121,6 +121,32 @@ def _get_error_msg(key: str, lang: str = "zh") -> str:
     return _ADMIN_ERROR_MESSAGES.get(lang, _ADMIN_ERROR_MESSAGES["zh"]).get(key, key)
 
 
+# 本地化字典映射
+_LOCALIZE_MAP = {
+    "gender": {
+        "zh": {"male": "男", "female": "女"},
+        "en": {"male": "Male", "female": "Female"},
+    },
+    "sexual_orientation": {
+        "zh": {"heterosexual": "异性恋", "homosexual": "同性恋", "bisexual": "双性恋"},
+        "en": {"heterosexual": "Heterosexual", "homosexual": "Homosexual", "bisexual": "Bisexual"},
+    },
+}
+
+
+def _localize_dict(data: dict, fields: list, lang: str = "zh") -> dict:
+    """本地化字典中的指定字段"""
+    result = data.copy()
+    lang = lang.split("-")[0]
+    for field, field_type in fields:
+        if field in result and result[field]:
+            value = result[field]
+            localize_map = _LOCALIZE_MAP.get(field_type, {}).get(lang, {})
+            if value in localize_map:
+                result[field] = localize_map[value]
+    return result
+
+
 async def get_admin_lang(accept_language: Optional[str] = Header(None, alias="Accept-Language")) -> str:
     """从请求头解析管理员界面语言，默认中文"""
     if accept_language:
