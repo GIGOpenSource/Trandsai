@@ -329,7 +329,7 @@ def custom_openapi():
 
   # 添加两种安全方案
   openapi_schema["components"]["securitySchemes"] = {
-      "BearerAuth": {
+      "HTTPBearer": {
           "type": "http",
           "scheme": "bearer",
           "bearerFormat": "Token",
@@ -343,9 +343,8 @@ def custom_openapi():
       }
   }
 
-  # 全局：BearerAuth 或 XToken 二选一
-  openapi_schema["security"] = [{"BearerAuth": []}, {"XToken": []}]
-
+  # 全局安全方案
+  openapi_schema["security"] = [{"HTTPBearer": []}, {"XToken": []}]
   app.openapi_schema = openapi_schema
   return app.openapi_schema
 

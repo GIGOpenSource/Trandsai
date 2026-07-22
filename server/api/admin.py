@@ -7,6 +7,7 @@ from typing import Optional
 
 from dotenv import set_key
 from fastapi import APIRouter, Body, Depends, Header, HTTPException, Query
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from fastapi.responses import StreamingResponse
 from sqlalchemy import desc, func, nullslast
@@ -130,10 +131,10 @@ async def get_admin_lang(accept_language: Optional[str] = Header(None, alias="Ac
     return "zh"
 
 
-async def admin_auth_required(authorization: str = Header(...)):
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing authentication")
-    token = authorization[7:]
+security = HTTPBearer()
+
+async def admin_auth_required(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
     if not verify_token(token):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return token
