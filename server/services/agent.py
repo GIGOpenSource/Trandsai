@@ -25,17 +25,137 @@ logger = logging.getLogger(__name__)
 
 
 # ===== 模型配置 =====
+def _build_llm_for_provider(
+    provider: str,
+    temperature: float,
+    max_tokens: int,
+    api_key_overrides: Optional[Dict[str, str]],
+):
+    """根据 provider 名称构建 LLM 实例（不含回退逻辑）。"""
+
+    def _override_or_env(field: str, env_name: str) -> str:
+        if api_key_overrides:
+            v = (api_key_overrides.get(field) or "").strip()
+            if v:
+                return v
+        return os.getenv(env_name, "") or ""
+
+    if provider == "deepseek":
+        api_key = _override_or_env("deepseek_key", "DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError("请设置 DEEPSEEK_API_KEY")
+        return ChatOpenAI(
+            model="qwen3.7-max",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+        )
+
+    if provider == "grok":
+        api_key = _override_or_env("xai_key", "XAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("请设置 XAI_API_KEY")
+        return ChatOpenAI(
+            model="grok-3-latest",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=api_key,
+            base_url="https://api.x.ai/v1",
+        )
+
+    if provider == "openai":
+        api_key = _override_or_env("openai_key", "OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("请设置 OPENAI_API_KEY")
+        return ChatOpenAI(
+            model="gpt-4o",
+            temperature=temperature,
+            max_tokens=max_tokens,
+            api_key=api_key,
+        )
+
+    # 默认 anthropic
+    api_key = _override_or_env("anthropic_key", "ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("请设置 ANTHROPIC_API_KEY")
+    return ChatAnthropic(
+        model="claude-sonnet-4-20250514",
+        temperature=temperature,
+        max_tokens=max_tokens,
+        anthropic_api_key=api_key,
+    )
+
+
+# 回退优先级：deepseek → grok
+_FALLBACK_CHAIN = ["deepseek", "grok"]
+
+
+def _get_available_providers(api_key_overrides: Optional[Dict[str, str]] = None) -> list:
+    """返回当前有 API Key 的 provider 列表（按回退优先级排序）。"""
+    def _has_key(env_name: str, field: str) -> bool:
+        if api_key_overrides:
+            v = (api_key_overrides.get(field) or "").strip()
+            if v:
+                return True
+        return bool(os.getenv(env_name, "").strip())
+
+    available = []
+    for p in _FALLBACK_CHAIN:
+        if p == "deepseek" and _has_key("DEEPSEEK_API_KEY", "deepseek_key"):
+            available.append(p)
+        elif p == "grok" and _has_key("XAI_API_KEY", "xai_key"):
+            available.append(p)
+    return available
+
+
+class _FallbackChatLLM:
+    """包装多个 LLM，invoke 时按顺序尝试，首个成功即返回。"""
+
+    def __init__(self, llm_list: list):
+        self._llms = llm_list
+
+    def invoke(self, *args, **kwargs):
+        last_err = None
+        for llm in self._llms:
+            try:
+                return llm.invoke(*args, **kwargs)
+            except Exception as e:
+                logger.warning("LLM %s 调用失败，尝试回退: %s", type(llm).__name__, e)
+                last_err = e
+        raise last_err or RuntimeError("所有 LLM 均不可用")
+
+    def __getattr__(self, name):
+        return getattr(self._llms[0], name)
+
+
 def get_llm(
     temperature: float = None,
     max_tokens: int = None,
     provider: str = None,
     api_key_overrides: Optional[Dict[str, str]] = None,
 ):
-    """获取 LLM 实例。支持: anthropic / deepseek / openai / grok"""
+    """获取 LLM 实例，支持自动回退：deepseek → grok。
+    显式指定 provider 时不走回退链。"""
     cfg = _get_agent_config()
     temperature = temperature if temperature is not None else cfg.get("temperature", 0.93)
     max_tokens = max_tokens if max_tokens is not None else cfg.get("max_tokens", 1024)
     provider = (provider or cfg.get("model_provider") or os.getenv("MODEL_PROVIDER", "anthropic")).lower()
+
+    # 显式指定的 provider 直接构建，不走回退
+    if provider not in ("deepseek", "grok"):
+        return _build_llm_for_provider(provider, temperature, max_tokens, api_key_overrides)
+
+    # deepseek / grok：按回退链构建可用 LLM 列表
+    available = _get_available_providers(api_key_overrides)
+    if not available:
+        # 无可用 key，走原逻辑抛错
+        return _build_llm_for_provider(provider, temperature, max_tokens, api_key_overrides)
+
+    llm_list = [_build_llm_for_provider(p, temperature, max_tokens, api_key_overrides) for p in available]
+    if len(llm_list) == 1:
+        return llm_list[0]
+    return _FallbackChatLLM(llm_list)
 
     def _override_or_env(field: str, env_name: str) -> str:
         if api_key_overrides:
