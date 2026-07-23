@@ -16,7 +16,7 @@ def create_post(
     images: Optional[List[str]] = None,
     category: str = "",
 ) -> dict:
-    """创建新帖子（avatar 不再存储，查询时从 users 表取）"""
+    """创建新帖子（user_name/avatar 不再依赖存储值，查询时从 users 表取）"""
     title = title.strip()
     content = content.strip()
     category = category.strip()
@@ -32,11 +32,13 @@ def create_post(
         category = category[:50]
 
     with get_db() as db:
-        # 查询用户头像
+        # 查询用户昵称和头像
+        live_name = ""
         avatar_url = ""
         if user_id:
-            user = db.query(UserORM.avatar_url).filter(UserORM.id == user_id).first()
+            user = db.query(UserORM.nickname, UserORM.avatar_url).filter(UserORM.id == user_id).first()
             if user:
+                live_name = user.nickname or ""
                 avatar_url = user.avatar_url or ""
 
         post = PostORM(
@@ -53,7 +55,7 @@ def create_post(
             "ok": True,
             "id": post.id,
             "user_id": post.user_id,
-            "user_name": post.user_name,
+            "user_name": live_name or post.user_name,
             "avatar": avatar_url,
             "title": post.title,
             "content": post.content,
@@ -91,9 +93,9 @@ def get_posts_feed(
     user_id: Optional[int] = None,
     category: Optional[str] = None,
 ) -> List[dict]:
-    """获取帖子列表（头像从 users 表实时取）"""
+    """获取帖子列表（user_name/avatar 从 users 表实时取）"""
     with get_db() as db:
-        query = db.query(PostORM, UserORM.avatar_url).outerjoin(
+        query = db.query(PostORM, UserORM.nickname, UserORM.avatar_url).outerjoin(
             UserORM, PostORM.user_id == UserORM.id
         )
         if category:
@@ -104,13 +106,13 @@ def get_posts_feed(
             .offset(offset)
             .all()
         )
-        post_ids = [p.id for p, _ in rows]
+        post_ids = [p.id for p, _, _ in rows]
         liked_ids = _batch_liked_ids(db, post_ids, user_id, device_id)
         return [
             {
                 "id": p.id,
                 "user_id": p.user_id,
-                "user_name": p.user_name,
+                "user_name": nickname or p.user_name,
                 "avatar": avatar_url or "",
                 "title": p.title,
                 "content": p.content,
@@ -121,7 +123,7 @@ def get_posts_feed(
                 "liked": p.id in liked_ids,
                 "created_at": serialize_datetime(p.created_at),
             }
-            for p, avatar_url in rows
+            for p, nickname, avatar_url in rows
         ]
 
 
@@ -132,11 +134,11 @@ def search_posts(
     device_id: Optional[str] = None,
     user_id: Optional[int] = None,
 ) -> List[dict]:
-    """搜索帖子（标题或内容匹配，头像从 users 表实时取）"""
+    """搜索帖子（标题或内容匹配，user_name/avatar 从 users 表实时取）"""
     with get_db() as db:
         search_pattern = f"%{query}%"
         rows = (
-            db.query(PostORM, UserORM.avatar_url)
+            db.query(PostORM, UserORM.nickname, UserORM.avatar_url)
             .outerjoin(UserORM, PostORM.user_id == UserORM.id)
             .filter(
                 or_(
@@ -150,7 +152,7 @@ def search_posts(
             .all()
         )
         result = []
-        for p, avatar_url in rows:
+        for p, nickname, avatar_url in rows:
             liked = False
             if user_id:
                 liked = (
@@ -169,7 +171,7 @@ def search_posts(
             result.append({
                 "id": p.id,
                 "user_id": p.user_id,
-                "user_name": p.user_name,
+                "user_name": nickname or p.user_name,
                 "avatar": avatar_url or "",
                 "title": p.title,
                 "content": p.content,
@@ -188,10 +190,10 @@ def get_my_posts(
     limit: int = 50,
     offset: int = 0,
 ) -> List[dict]:
-    """获取指定用户发布的帖子列表（头像从 users 表实时取）"""
+    """获取指定用户发布的帖子列表（user_name/avatar 从 users 表实时取）"""
     with get_db() as db:
         rows = (
-            db.query(PostORM, UserORM.avatar_url)
+            db.query(PostORM, UserORM.nickname, UserORM.avatar_url)
             .outerjoin(UserORM, PostORM.user_id == UserORM.id)
             .filter(PostORM.user_id == user_id)
             .order_by(desc(PostORM.created_at))
@@ -203,7 +205,7 @@ def get_my_posts(
             {
                 "id": p.id,
                 "user_id": p.user_id,
-                "user_name": p.user_name,
+                "user_name": nickname or p.user_name,
                 "avatar": avatar_url or "",
                 "title": p.title,
                 "content": p.content,
@@ -214,26 +216,26 @@ def get_my_posts(
                 "liked": True,
                 "created_at": serialize_datetime(p.created_at),
             }
-            for p, avatar_url in rows
+            for p, nickname, avatar_url in rows
         ]
 
 
 def get_post_detail(post_id: int) -> Optional[dict]:
-    """获取帖子详情（头像从 users 表实时取）"""
+    """获取帖子详情（user_name/avatar 从 users 表实时取）"""
     with get_db() as db:
         row = (
-            db.query(PostORM, UserORM.avatar_url)
+            db.query(PostORM, UserORM.nickname, UserORM.avatar_url)
             .outerjoin(UserORM, PostORM.user_id == UserORM.id)
             .filter(PostORM.id == post_id)
             .first()
         )
         if not row:
             return None
-        post, avatar_url = row
+        post, nickname, avatar_url = row
         return {
             "id": post.id,
             "user_id": post.user_id,
-            "user_name": post.user_name,
+            "user_name": nickname or post.user_name,
             "avatar": avatar_url or "",
             "title": post.title,
             "content": post.content,
@@ -323,6 +325,13 @@ def add_post_comment(
         if not post:
             return {"ok": False, "error": "帖子不存在"}
 
+        # 查询用户昵称
+        live_name = ""
+        if user_id:
+            user = db.query(UserORM.nickname).filter(UserORM.id == user_id).first()
+            if user:
+                live_name = user.nickname or ""
+
         comment = PostCommentORM(
             post_id=post_id,
             user_id=user_id,
@@ -336,18 +345,19 @@ def add_post_comment(
         return {
             "ok": True,
             "id": comment.id,
-            "user_name": comment.user_name,
+            "user_name": live_name or comment.user_name,
             "content": comment.content,
             "created_at": serialize_datetime(comment.created_at),
         }
 
 
 def get_post_comments(post_id: int, limit: int = 50) -> List[dict]:
-    """获取帖子的所有评论"""
+    """获取帖子的所有评论（user_name 从 users 表实时取）"""
     with get_db() as db:
-        comments = (
-            db.query(PostCommentORM)
-            .filter_by(post_id=post_id)
+        rows = (
+            db.query(PostCommentORM, UserORM.nickname)
+            .outerjoin(UserORM, PostCommentORM.user_id == UserORM.id)
+            .filter(PostCommentORM.post_id == post_id)
             .order_by(PostCommentORM.created_at)
             .limit(limit)
             .all()
@@ -356,11 +366,11 @@ def get_post_comments(post_id: int, limit: int = 50) -> List[dict]:
             {
                 "id": c.id,
                 "user_id": c.user_id,
-                "user_name": c.user_name,
+                "user_name": nickname or c.user_name,
                 "content": c.content,
                 "created_at": serialize_datetime(c.created_at),
             }
-            for c in comments
+            for c, nickname in rows
         ]
 
 
