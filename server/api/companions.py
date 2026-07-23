@@ -616,14 +616,14 @@ class PersonaGenerateRequest(BaseModel):
              ,)
 async def api_generate_persona(data: PersonaGenerateRequest):
     """根据基础信息 AI 自动生成完整人设"""
-    name = data.get("name", "")
-    age = data.get("age", 22)
-    gender = data.get("gender", "女")
-    sexual_orientation = data.get("sexual_orientation", "")
-    city = data.get("city", "")
-    personality = data.get("personality", "")
-    mbti = data.get("mbti", "")
-    lang = normalize_ui_language(data.get("lang", "zh"))
+    name = data.name
+    age = data.age
+    gender = data.gender
+    sexual_orientation = data.sexual_orientation
+    city = data.city
+    personality = data.personality
+    mbti = data.mbti
+    lang = normalize_ui_language(data.lang)
 
     if not name or not city or not personality:
         raise HTTPException(status_code=400, detail="姓名、城市和性格为必填项")

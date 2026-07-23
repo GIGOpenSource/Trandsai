@@ -5,7 +5,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Body, Header, HTTPException
+from pydantic import BaseModel, Field
 
 from core.database import CompanionORM, CompanionStateORM, UserCompanionStateORM, UserORM, get_db
 from core.auth import (

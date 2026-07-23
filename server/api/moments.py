@@ -114,20 +114,6 @@ async def api_list_moments(
 ):
     """获取朋友圈列表，包含评论（公开接口，所有人都能看到所有人的朋友圈）"""
 
-    # ============ 1. 详细的请求日志 ============
-    logger.info("=" * 60)
-    logger.info(f"📥 API Request: /api/moments")
-    logger.info(f"   Time: {datetime.now().isoformat()}")
-    logger.info(f"   Parameters:")
-    logger.info(f"     - limit: {limit} (type: {type(limit).__name__})")
-    logger.info(f"     - offset: {offset} (type: {type(offset).__name__})")
-    logger.info(f"     - lang: {lang} (type: {type(lang).__name__})")
-    logger.info(f"     - filter_lang: {filter_lang}")
-    logger.info(f"     - gender: {gender}")
-    logger.info(f"     - orientation: {orientation}")
-    logger.info(f"   Headers:")
-    logger.info(f"     - x_token: {'***' if x_token else 'None'}")
-
     # ============ 2. 参数验证和转换 ============
     # 确保 lang 参数有效
     if lang is not None and lang == "":
