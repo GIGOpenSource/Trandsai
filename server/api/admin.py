@@ -225,6 +225,20 @@ async def admin_delete_companion(companion_id: str, _token: str = Depends(admin_
     return {"ok": True}
 
 
+@router.post("/api/admin/companions/{companion_id}/restore", summary="恢复已删除的伴侣")
+async def admin_restore_companion(companion_id: str, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
+    """恢复被用户软删除的伴侣"""
+    companion = get_companion_manager().get(companion_id)
+    if not companion:
+        raise HTTPException(status_code=404, detail=_get_error_msg("companion_not_found", lang))
+    if not companion.profile.deleted_at:
+        raise HTTPException(status_code=400, detail="该伴侣未被删除")
+    ok = get_companion_manager().restore(companion_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="恢复失败")
+    return {"ok": True}
+
+
 @router.put("/api/admin/companions/{companion_id}", summary="更新伴侣信息")
 async def admin_update_companion(companion_id: str, data: dict, _token: str = Depends(admin_auth_required), lang: str = Depends(get_admin_lang)):
     companion = get_companion_manager().update(companion_id, data)

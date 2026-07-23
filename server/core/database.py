@@ -76,6 +76,7 @@ class CompanionORM(Base):
     created_by = Column(String(64), default="")
     language = Column(String(10), default="zh")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    deleted_at = Column(DateTime, nullable=True, default=None)
 
 
 class UserCompanionStateORM(Base):

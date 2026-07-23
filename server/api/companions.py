@@ -795,7 +795,7 @@ async def api_generate_avatar(
     return {"ok": True, "avatar_url": image_url}
 
 
-# 删除 - 需要是所有者
+# 删除 - 只能删除自己创建的（软删除）
 @router.delete("/companions/{companion_id}", summary="删除伴侣")
 async def api_delete_companion(
         companion_id: str,
@@ -804,7 +804,12 @@ async def api_delete_companion(
     companion = get_companion_manager().get(companion_id)
     if not companion:
         raise HTTPException(status_code=404, detail="智能体不存在")
-    ok = get_companion_manager().delete(companion_id)
+    # 权限校验：只能删除自己创建的
+    user_info = get_companion_manager()._get_user_info(user_id)
+    if not get_companion_manager()._is_my_companion(companion, user_info):
+        raise HTTPException(status_code=403, detail="只能删除自己创建的伴侣")
+    # 软删除
+    ok = get_companion_manager().soft_delete(companion_id)
     if not ok:
         raise HTTPException(status_code=404, detail="智能体不存在")
     return {"ok": True}
@@ -860,6 +865,18 @@ async def ws_chat(websocket: WebSocket, companion_id: str):
         err = _WS_COMPANION_NOT_FOUND.get(ui_lang_early, _WS_COMPANION_NOT_FOUND["zh"])
         await websocket.send_text(json.dumps({"type": "error", "text": err}))
         await websocket.close()
+        return
+
+    # 软删除拦截：已被创建者删除的伴侣，禁止对话
+    if companion.profile.deleted_at:
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "text": "该伴侣已被创建者删除，无法继续对话"
+            }))
+            await websocket.close(code=1008)
+        except Exception:
+            pass
         return
 
     try:

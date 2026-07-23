@@ -76,6 +76,7 @@ class CompanionProfile(BaseModel):
     created_by: str = Field(default="", max_length=64)
     language: str = Field(default="zh", max_length=10)
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    deleted_at: Optional[str] = Field(default=None, max_length=50)
 
 
 def clamp_companion_profile_dict(data: dict) -> dict:
@@ -265,6 +266,7 @@ class CompanionManager:
                             created_by=row.created_by or "",
                             language=row.language or "zh",
                             created_at=row.created_at.isoformat() if row.created_at else datetime.now(timezone.utc).isoformat(),
+                            deleted_at=row.deleted_at.isoformat() if row.deleted_at else None,
                         )
                         s = state_map.get(row.id)
                         state = CompanionState(
@@ -437,13 +439,39 @@ class CompanionManager:
             user_affections = self._batch_get_user_affections(user_id)
 
         for c in self._companions.values():
-            # 根据 filter_type 过滤
-            if filter_type == "chatted":
-                # 使用预查询的数据判断是否有对话
+            is_deleted = bool(c.profile.deleted_at)
+            is_mine = self._is_my_companion(c, user_info) if user_id else False
+
+            # 软删除过滤逻辑
+            if filter_type == "mine_chatted":
+                if is_mine and is_deleted:
+                    # 创建者不看自己已删除的
+                    continue
+                if not is_mine and is_deleted:
+                    # 别人：没聊过的不显示已删除的
+                    has_chat = c.profile.id in chatted_companion_ids
+                    if not has_chat:
+                        continue
+                # 原有逻辑：不是自己创建的且没有对话，跳过
+                if not is_mine and c.profile.id not in chatted_companion_ids:
+                    continue
+            elif filter_type == "all":
+                if is_deleted:
+                    continue
+            elif filter_type == "chatted":
                 if c.profile.id not in chatted_companion_ids:
                     continue
+                if is_deleted:
+                    # 已删除的只有聊过的才显示
+                    continue
+            elif filter_type == "mine":
+                if not is_mine:
+                    continue
+                if is_deleted:
+                    continue
             elif filter_type == "affectionate":
-                # 使用预查询的亲密度数据
+                if is_deleted:
+                    continue
                 if user_id:
                     affection = user_affections.get(c.profile.id, 0)
                     if affection <= 5:
@@ -451,16 +479,6 @@ class CompanionManager:
                 else:
                     if not c.state or c.state.affection <= 5:
                         continue
-            elif filter_type == "mine":
-                if not self._is_my_companion(c, user_info):
-                    continue
-            elif filter_type == "mine_chatted":
-                # 逻辑：自己创建的全部返回，别人创建的只有对话才返回
-                is_mine = self._is_my_companion(c, user_info)
-                has_chat = c.profile.id in chatted_companion_ids
-                if not is_mine and not has_chat:
-                    # 不是自己创建的，且没有对话，跳过
-                    continue
 
             # 使用预查询的状态数据构建 item（避免 to_dict 中的 N+1）
             item = self._build_companion_dict(c, user_id, user_states)
@@ -634,6 +652,7 @@ class CompanionManager:
             "state": state_payload,
             "avatar": avatar,
             "avatar_generating": is_generating,
+            "deleted_at": companion.profile.deleted_at,
         }
 
     def _get_user_info(self, user_id: int) -> dict:
@@ -713,7 +732,7 @@ class CompanionManager:
             return None
 
         # 更新内存中的 profile（添加 mbti 支持）
-        updatable = {"name", "age", "gender", "city", "personality", "background", "speech_style", "hobbies", "values", "fears", "love_view", "daily_routine", "favorite_things", "mbti", "sexual_orientation", "life_story", "cultural_values", "gender_perspective", "avatar_url", "created_by", "language","created_at"}
+        updatable = {"name", "age", "gender", "city", "personality", "background", "speech_style", "hobbies", "values", "fears", "love_view", "daily_routine", "favorite_things", "mbti", "sexual_orientation", "life_story", "cultural_values", "gender_perspective", "avatar_url", "created_by", "language","created_at","deleted_at"}
         for key in updatable:
             if key in data:
                 setattr(companion.profile, key, data[key])
@@ -760,6 +779,34 @@ class CompanionManager:
                     ))
 
         return companion
+
+    def soft_delete(self, companion_id: str) -> bool:
+        """软删除：设置 deleted_at，不从内存/DB 移除"""
+        companion = self._companions.get(companion_id)
+        if not companion:
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        companion.profile.deleted_at = now
+        # 同步更新 MySQL
+        with get_db() as db:
+            row = db.query(CompanionORM).filter(CompanionORM.id == companion_id).first()
+            if row:
+                row.deleted_at = datetime.now(timezone.utc)
+                db.commit()
+        return True
+
+    def restore(self, companion_id: str) -> bool:
+        """恢复已软删除的伴侣"""
+        companion = self._companions.get(companion_id)
+        if not companion:
+            return False
+        companion.profile.deleted_at = None
+        with get_db() as db:
+            row = db.query(CompanionORM).filter(CompanionORM.id == companion_id).first()
+            if row:
+                row.deleted_at = None
+                db.commit()
+        return True
 
     def delete(self, companion_id: str) -> bool:
         companion = self._companions.pop(companion_id, None)
