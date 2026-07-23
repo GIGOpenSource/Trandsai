@@ -8,7 +8,8 @@ __pycache__/
 # Build outputs
 client/dist/
 *.egg-info/
-
+/admin
+/admin-legacy
 # Environment & secrets1
 .env
 .env.*
