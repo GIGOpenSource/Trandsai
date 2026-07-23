@@ -696,7 +696,7 @@ class CompanionManager:
         """排序：按 max(创建时间, 最后消息时间) 降序"""
         def get_sort_key(item: Dict) -> str:
             """获取排序依据：max(创建时间, 最后消息时间)"""
-            created_at = item.get("created_at", "") or ""
+            created_at = (item.get("profile") or {}).get("created_at", "") or ""
             last_message_time = item.get("last_message_time", "") or ""
             # 比较两个时间字符串，返回较大的那个
             if last_message_time > created_at:
