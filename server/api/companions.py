@@ -734,22 +734,40 @@ async def api_create_companion(
 async def api_list_companions(
         x_token: Optional[str] = Header(None, alias="x-token"),
         user_id: int = Depends(require_permissions(IsAuthenticated)),
-        filter_type: str = Query("all", pattern="^(all|chatted|affectionate|mine|mine_chatted)$")
+        special: Optional[str] = Query(None, description="特殊场景筛选，message=消息场景（自己创建的所有+别人创建的亲密度>0.01）"),
+        intimacy_value: float = Query(0, description="亲密度阈值，返回亲密度>=该值的智能体，默认0不过滤"),
+        is_created: Optional[str] = Query(None, description="创建者筛选：true=只返回自己创建的，false=只返回别人创建的，不传=全部")
 ):
     """获取当前用户的 companions 列表
 
           Args:
-              filter_type: 过滤类型
-                  - "all": 返回所有智能体（默认）
-                  - "chatted": 返回有对话的智能体（turns > 0）
-                  - "affectionate": 返回亲密度 > 5 的智能体/
-                  - "mine": 返回自己创建的智能体
-                  - "mine_chatted": 返回自己创建的 + 有对话的智能体
-                  只要两个参数”
-                  - "is_create"： 返回自己创建的（机器人创建者id 等于token自身的），不传则所有的
-                  - "affecte_score"： 返回大于等于 该亲密度(默认有聊天就有亲密度 因此也代表有过聊天的 )
+              special: 特殊场景筛选
+                  - "message": 消息场景 —— 自己创建的所有 + 别人创建的亲密度>0.01（忽略 intimacy_value 和 is_created）
+              intimacy_value: 亲密度阈值（默认0），返回亲密度 >= 该值的智能体
+              is_created: 创建者筛选
+                  - "true": 只返回自己创建的智能体
+                  - "false": 只返回别人创建的智能体
+                  - 不传: 返回所有智能体
+
+          场景示例：
+              1. 消息场景：special=message
+              2. 首页：intimacy_value=0.001
+              3. 机器人页面：无参数（默认）
+              4. 我的机器人页面：is_created=true
+              5. 我的恋人：intimacy_value=n（用户设置的亲密度值）
+              6. 亲密度记录：intimacy_value=0.001
           """
-    return get_companion_manager().list_all_for_any(filter_type=filter_type, user_id=user_id)
+    # 解析 is_created 字符串为 bool 或 None
+    is_created_bool = None
+    if is_created is not None:
+        is_created_bool = is_created.lower() == "true"
+
+    return get_companion_manager().list_all_for_any(
+        user_id=user_id,
+        special=special,
+        intimacy_value=intimacy_value,
+        is_created=is_created_bool,
+    )
 
 
 @router.get("/companions/{companion_id}", summary="获取伴侣详情")

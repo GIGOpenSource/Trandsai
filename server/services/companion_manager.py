@@ -400,105 +400,119 @@ class CompanionManager:
             result.append(item)
         return result
 
-    def list_all_for_any(self, filter_type: str = "all", user_id: Optional[int] = None) -> List[Dict]:
-        """获取所有 companions 列表（优化版本：批量查询代替 N+1）
+    def list_all_for_any(
+        self,
+        user_id: Optional[int] = None,
+        special: Optional[str] = None,
+        intimacy_value: float = 0,
+        is_created: Optional[bool] = None,
+    ) -> List[Dict]:
+        """获取 companions 列表（优化版本：批量查询代替 N+1）
 
         Args:
-            filter_type: 过滤类型
-                - "all": 返回所有智能体（默认）
-                - "chatted": 返回有对话的智能体
-                - "affectionate": 返回亲密度 > 5 的智能体
-                - "mine": 返回自己创建的智能体
-                - "mine_chatted": 自己创建的全部返回，别人创建的只有对话才返回；按 max(创建时间, 最后消息时间) 降序排序
-            user_id: 当前用户ID（用于判断是否是自己创建的）
+            user_id: 当前用户ID（用于判断创建者和亲密度）
+            special: 特殊场景筛选
+                - "message": 消息场景 —— 自己创建的所有 + 别人创建的亲密度>0.01（忽略 intimacy_value 和 is_created）
+            intimacy_value: 亲密度阈值（默认0），返回亲密度 >= 该值的智能体
+            is_created: 创建者筛选
+                - None: 返回所有（默认）
+                - True: 只返回自己创建的
+                - False: 只返回别人创建的
         """
         result = []
 
-        # 获取当前用户信息（用于判断 created_by）
+        # 消息场景：优先处理，忽略其他参数
+        if special == "message" and user_id:
+            return self._list_message_scene(user_id)
+
+        # 获取当前用户信息
         user_info = None
-        if user_id and filter_type in ("mine", "mine_chatted"):
+        if user_id and is_created is not None:
             user_info = self._get_user_info(user_id)
 
-        # ========== 性能优化：批量预查询 ==========
-        # 1. 批量查询所有用户的 companion 状态（避免 to_dict 中的 N+1）
+        # 批量预查询
         user_states = {}
         if user_id:
             user_states = self._batch_get_user_states(user_id)
 
-        # 2. 批量查询所有有对话的 companion IDs（用于 chatted 和 last_message）
-        chatted_companion_ids = set()
-        last_messages = {}  # companion_id -> last_message_info
-
-        if filter_type in ("chatted", "mine_chatted", "all"):
-            # 一次查询获取所有有对话的 companion
-            chatted_companion_ids, last_messages = self._batch_get_chatted_info(user_id)
-
-        # 3. 批量查询所有用户的亲密度（用于 affectionate 过滤）
+        # 如果需要亲密度过滤，批量查询用户亲密度
         user_affections = {}
-        if user_id and filter_type in ("affectionate",):
+        if user_id and intimacy_value > 0:
             user_affections = self._batch_get_user_affections(user_id)
 
         for c in self._companions.values():
             is_deleted = bool(c.profile.deleted_at)
-            is_mine = self._is_my_companion(c, user_info) if user_id else False
+            is_mine = self._is_my_companion(c, user_info) if user_info else False
 
-            # 软删除过滤逻辑
-            if filter_type == "mine_chatted":
-                if is_mine and is_deleted:
-                    # 创建者不看自己已删除的
-                    continue
-                if not is_mine and is_deleted:
-                    # 别人：没聊过的不显示已删除的
-                    has_chat = c.profile.id in chatted_companion_ids
-                    if not has_chat:
-                        continue
-                # 原有逻辑：不是自己创建的且没有对话，跳过
-                if not is_mine and c.profile.id not in chatted_companion_ids:
-                    continue
-            elif filter_type == "all":
-                if is_deleted:
-                    continue
-            elif filter_type == "chatted":
-                if c.profile.id not in chatted_companion_ids:
-                    continue
-                if is_deleted:
-                    # 已删除的只有聊过的才显示
-                    continue
-            elif filter_type == "mine":
-                if not is_mine:
-                    continue
-                if is_deleted:
-                    continue
-            elif filter_type == "affectionate":
-                if is_deleted:
-                    continue
-                if user_id:
-                    affection = user_affections.get(c.profile.id, 0)
-                    if affection <= 5:
-                        continue
-                else:
-                    if not c.state or c.state.affection <= 5:
-                        continue
+            # 创建者筛选
+            if is_created is True and not is_mine:
+                continue
+            if is_created is False and is_mine:
+                continue
 
-            # 使用预查询的状态数据构建 item（避免 to_dict 中的 N+1）
+            # 软删除过滤
+            if is_deleted:
+                continue
+
+            # 亲密度过滤
+            if intimacy_value > 0 and user_id:
+                affection = user_affections.get(c.profile.id, 0)
+                if affection < intimacy_value:
+                    continue
+
+            # 使用预查询的状态数据构建 item
             item = self._build_companion_dict(c, user_id, user_states)
 
-            # 使用预查询的 last_message 数据
-            if c.profile.id in last_messages:
-                last = last_messages[c.profile.id]
-                item["last_message"] = last["content"]
-                item["last_message_time"] = last["timestamp"]
-            else:
-                item["last_message"] = ""
-                item["last_message_time"] = ""
+            item["last_message"] = ""
+            item["last_message_time"] = ""
 
             result.append(item)
 
-        # 排序逻辑
-        if filter_type == "mine_chatted":
-            result = self._sort_mine_chatted(result)
-        elif filter_type == "affectionate":
-            result.sort(key=lambda x: x.get("state", {}).get("affection", 0), reverse=True)
+        # 按 last_message_time 降序排序
+        result.sort(
+            key=lambda x: x.get("last_message_time", "") or "",
+            reverse=True,
+        )
+
+        return result
+
+    def _list_message_scene(self, user_id: int) -> List[Dict]:
+        """消息场景：自己创建的所有 + 别人创建的亲密度>0.01
+
+        Args:
+            user_id: 当前用户ID
+        """
+        result = []
+        user_info = self._get_user_info(user_id)
+        user_states = self._batch_get_user_states(user_id)
+        user_affections = self._batch_get_user_affections(user_id)
+
+        for c in self._companions.values():
+            is_deleted = bool(c.profile.deleted_at)
+            is_mine = self._is_my_companion(c, user_info)
+
+            if is_mine:
+                # 自己创建的：跳过已删除的
+                if is_deleted:
+                    continue
+            else:
+                # 别人创建的：亲密度 > 0.01 才显示
+                if is_deleted:
+                    continue
+                affection = user_affections.get(c.profile.id, 0)
+                if affection <= 0.01:
+                    continue
+
+            item = self._build_companion_dict(c, user_id, user_states)
+            item["last_message"] = ""
+            item["last_message_time"] = ""
+            result.append(item)
+
+        # 按 last_message_time 降序排序
+        result.sort(
+            key=lambda x: x.get("last_message_time", "") or "",
+            reverse=True,
+        )
 
         return result
 
