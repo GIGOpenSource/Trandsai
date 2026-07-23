@@ -36,7 +36,6 @@ Thumbs.db
 .claude
 *.swp
 *.swo
-
 # Data directories (runtime generated)
 memory/
 data/
@@ -45,16 +44,11 @@ server/memory/
 server/data/images/
 data/images/
 server/scripts/data/images/
-
 # Binary cache files
 *.bin
-
 # Backup files
 *.bak
 canvases/
 tool/
-
-
 fix_agent.py
-
 *.md
