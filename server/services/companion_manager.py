@@ -7,8 +7,6 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-from sqlalchemy import desc, func
-
 from core.database import (
     CompanionORM,
     CompanionStateORM,
@@ -23,77 +21,10 @@ from core.database import (
     get_db, UserORM,
 )
 from services.image_generation import generate_avatar_prompt, generate_image
-from services.memory import CompanionMemory
+from services.memory import CompanionMemory, ShortTermMemory
 from services.culture_data import infer_language_from_city
 
 logger = logging.getLogger(__name__)
-
-
-def _batch_user_companion_states(user_id: int, companion_ids: List[str]) -> Dict[str, dict]:
-    """Batch load per-user affection/turns for list API (S-10)."""
-    if not companion_ids:
-        return {}
-    with get_db() as db:
-        user_rows = (
-            db.query(UserCompanionStateORM)
-            .filter(
-                UserCompanionStateORM.user_id == user_id,
-                UserCompanionStateORM.companion_id.in_(companion_ids),
-            )
-            .all()
-        )
-        user_map = {
-            r.companion_id: {
-                "affection": r.affection if r.affection is not None else 0,
-                "turns": r.turns if r.turns is not None else 0,
-            }
-            for r in user_rows
-        }
-        missing = [cid for cid in companion_ids if cid not in user_map]
-        if not missing:
-            return user_map
-        global_rows = (
-            db.query(CompanionStateORM)
-            .filter(CompanionStateORM.companion_id.in_(missing))
-            .all()
-        )
-        for gr in global_rows:
-            user_map[gr.companion_id] = {
-                "affection": gr.affection if gr.affection is not None else 0,
-                "turns": gr.turns if gr.turns is not None else 0,
-            }
-        return user_map
-
-
-def _batch_last_messages(companion_ids: List[str]) -> Dict[str, dict]:
-    """一次查询获取多个 companion 的最后一条消息。"""
-    if not companion_ids:
-        return {}
-    with get_db() as db:
-        subq = (
-            db.query(
-                ShortTermMessageORM.companion_id,
-                func.max(ShortTermMessageORM.id).label("max_id"),
-            )
-            .filter(ShortTermMessageORM.companion_id.in_(companion_ids))
-            .group_by(ShortTermMessageORM.companion_id)
-            .subquery()
-        )
-        rows = (
-            db.query(ShortTermMessageORM)
-            .join(subq, ShortTermMessageORM.id == subq.c.max_id)
-            .all()
-        )
-        result = {}
-        for m in rows:
-            ts = m.created_at
-            if ts and ts.tzinfo is None:
-                ts = ts.replace(tzinfo=timezone.utc)
-            result[m.companion_id] = {
-                "content": m.content or "",
-                "timestamp": ts.isoformat() if ts else datetime.now(timezone.utc).isoformat(),
-            }
-        return result
 
 
 def hydrate_user_affection_turns(companion: "Companion", user_id: int) -> None:
@@ -178,11 +109,12 @@ class CompanionState(BaseModel):
 
 
 class Companion:
-    def __init__(self, profile: CompanionProfile, memory_root: str, state: Optional[CompanionState] = None):
+    def __init__(self, profile: CompanionProfile, memory_root: str, state: Optional[CompanionState] = None, user_id: Optional[int] = None):
         self.profile = profile
         self.dir = os.path.join(memory_root, profile.id)
         os.makedirs(self.dir, exist_ok=True)
-        self.memory = CompanionMemory(profile.id, self.dir)
+        self.user_id = user_id
+        self.memory = CompanionMemory(profile.id, self.dir, user_id)
         self.state = state if state is not None else self._load_state()
 
     def _load_state(self) -> CompanionState:
@@ -257,20 +189,13 @@ class Companion:
                         )
                     )
 
-    def to_dict(
-        self,
-        user_id: Optional[int] = None,
-        user_state: Optional[dict] = None,
-    ) -> dict:
+    def to_dict(self, user_id: Optional[int] = None) -> dict:
         avatar = self.profile.avatar_url
         is_generating = avatar == "__GENERATING__"
         if not avatar or is_generating:
             avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={self.profile.id}"
         state_payload = self.state.model_dump()
-        if user_state:
-            state_payload["affection"] = user_state.get("affection", state_payload.get("affection", 0))
-            state_payload["turns"] = user_state.get("turns", state_payload.get("turns", 0))
-        elif user_id is not None:
+        if user_id is not None:
             with get_db() as db:
                 ur = (
                     db.query(UserCompanionStateORM)
@@ -376,50 +301,7 @@ class CompanionManager:
             )
             profile.language = inferred
 
-        # 内存中去重（名称+城市）
-        for c in self._companions.values():
-            if c.profile.name == profile.name and c.profile.city == profile.city:
-                return c
-
         with get_db() as db:
-            # 数据库中去重：id 或 name+city 已存在则返回已有记录
-            existing = db.query(CompanionORM).filter(
-                (CompanionORM.id == profile.id) |
-                ((CompanionORM.name == profile.name) & (CompanionORM.city == profile.city))
-            ).first()
-            if existing:
-                # 如果内存中没有但 DB 中有，重新加载到内存
-                if existing.id not in self._companions:
-                    self._load_all()
-                return self._companions.get(existing.id) or Companion(
-                    CompanionProfile(
-                        id=existing.id,
-                        name=existing.name,
-                        age=existing.age or 18,
-                        gender=existing.gender or "女",
-                        city=existing.city or "未知",
-                        personality=existing.personality or "温柔体贴",
-                        background=existing.background or "",
-                        speech_style=existing.speech_style or "",
-                        hobbies=existing.hobbies or "",
-                        values=existing.values or "",
-                        fears=existing.fears or "",
-                        love_view=existing.love_view or "",
-                        daily_routine=existing.daily_routine or "",
-                        favorite_things=existing.favorite_things or "",
-                        mbti=existing.mbti or "",
-                        sexual_orientation=existing.sexual_orientation or "",
-                        life_story=existing.life_story or "",
-                        cultural_values=existing.cultural_values or "",
-                        gender_perspective=existing.gender_perspective or "",
-                        avatar_url=existing.avatar_url or "",
-                        created_by=existing.created_by or "",
-                        language=existing.language or "zh",
-                        created_at=existing.created_at.isoformat() if existing.created_at else datetime.now(timezone.utc).isoformat(),
-                    ),
-                    self.memory_root,
-                )
-
             db.add(CompanionORM(
                 id=profile.id,
                 name=profile.name,
@@ -473,6 +355,7 @@ class CompanionManager:
     def get(self, companion_id: str) -> Optional[Companion]:
         return self._companions.get(companion_id)
 
+
     def list_all(self, user_id: Optional[int] = None) -> List[Dict]:
         """获取 companions 列表。
         必须提供 user_id，只返回该用户拥有的 companions（created_by 匹配）。
@@ -492,22 +375,21 @@ class CompanionManager:
                 username = (user.username or "").strip()
                 nickname = (user.nickname or "").strip()
 
-        matched: List[tuple] = []
         for c in self._companions.values():
             created_by = (c.profile.created_by or "").strip()
 
+            # 必须匹配：created_by == user_id 或 username 或 nickname
             if created_by != user_id_str and created_by != username and created_by != nickname:
-                continue
+                continue  # 不属于该用户，跳过
 
-            matched.append((c, c.profile.id))
+            item = c.to_dict(user_id=user_id)
 
-        companion_ids = [cid for _, cid in matched]
-        last_msgs = _batch_last_messages(companion_ids)
-        state_map = _batch_user_companion_states(user_id, companion_ids)
-        for c, cid in matched:
-            item = c.to_dict(user_id=user_id, user_state=state_map.get(cid))
-            last = last_msgs.get(cid)
-            if last:
+            # 使用用户特定的短期记忆获取最近消息
+            user_short_term = ShortTermMemory(c.profile.id, user_id)
+            recent = user_short_term.get_recent(1)
+
+            if recent:
+                last = recent[-1]
                 item["last_message"] = last["content"]
                 item["last_message_time"] = last["timestamp"]
             else:
@@ -516,13 +398,322 @@ class CompanionManager:
             result.append(item)
         return result
 
+    def list_all_for_any(self, filter_type: str = "all", user_id: Optional[int] = None) -> List[Dict]:
+        """获取所有 companions 列表（优化版本：批量查询代替 N+1）
+
+        Args:
+            filter_type: 过滤类型
+                - "all": 返回所有智能体（默认）
+                - "chatted": 返回有对话的智能体
+                - "affectionate": 返回亲密度 > 5 的智能体
+                - "mine": 返回自己创建的智能体
+                - "mine_chatted": 自己创建的全部返回，别人创建的只有对话才返回；按 max(创建时间, 最后消息时间) 降序排序
+            user_id: 当前用户ID（用于判断是否是自己创建的）
+        """
+        result = []
+
+        # 获取当前用户信息（用于判断 created_by）
+        user_info = None
+        if user_id and filter_type in ("mine", "mine_chatted"):
+            user_info = self._get_user_info(user_id)
+
+        # ========== 性能优化：批量预查询 ==========
+        # 1. 批量查询所有用户的 companion 状态（避免 to_dict 中的 N+1）
+        user_states = {}
+        if user_id:
+            user_states = self._batch_get_user_states(user_id)
+
+        # 2. 批量查询所有有对话的 companion IDs（用于 chatted 和 last_message）
+        chatted_companion_ids = set()
+        last_messages = {}  # companion_id -> last_message_info
+
+        if filter_type in ("chatted", "mine_chatted", "all"):
+            # 一次查询获取所有有对话的 companion
+            chatted_companion_ids, last_messages = self._batch_get_chatted_info(user_id)
+
+        # 3. 批量查询所有用户的亲密度（用于 affectionate 过滤）
+        user_affections = {}
+        if user_id and filter_type in ("affectionate",):
+            user_affections = self._batch_get_user_affections(user_id)
+
+        for c in self._companions.values():
+            # 根据 filter_type 过滤
+            if filter_type == "chatted":
+                # 使用预查询的数据判断是否有对话
+                if c.profile.id not in chatted_companion_ids:
+                    continue
+            elif filter_type == "affectionate":
+                # 使用预查询的亲密度数据
+                if user_id:
+                    affection = user_affections.get(c.profile.id, 0)
+                    if affection <= 5:
+                        continue
+                else:
+                    if not c.state or c.state.affection <= 5:
+                        continue
+            elif filter_type == "mine":
+                if not self._is_my_companion(c, user_info):
+                    continue
+            elif filter_type == "mine_chatted":
+                # 逻辑：自己创建的全部返回，别人创建的只有对话才返回
+                is_mine = self._is_my_companion(c, user_info)
+                has_chat = c.profile.id in chatted_companion_ids
+                if not is_mine and not has_chat:
+                    # 不是自己创建的，且没有对话，跳过
+                    continue
+
+            # 使用预查询的状态数据构建 item（避免 to_dict 中的 N+1）
+            item = self._build_companion_dict(c, user_id, user_states)
+
+            # 使用预查询的 last_message 数据
+            if c.profile.id in last_messages:
+                last = last_messages[c.profile.id]
+                item["last_message"] = last["content"]
+                item["last_message_time"] = last["timestamp"]
+            else:
+                item["last_message"] = ""
+                item["last_message_time"] = ""
+
+            result.append(item)
+
+        # 排序逻辑
+        if filter_type == "mine_chatted":
+            result = self._sort_mine_chatted(result)
+        elif filter_type == "affectionate":
+            result.sort(key=lambda x: x.get("state", {}).get("affection", 0), reverse=True)
+
+        return result
+
+    # ========== 批量查询辅助方法（性能优化） ==========
+
+    def _batch_get_user_states(self, user_id: int) -> Dict[str, dict]:
+        """批量获取用户对所有 companions 的状态（避免 N+1 查询）
+
+        Returns:
+            Dict[companion_id, {"affection": float, "turns": int}]
+        """
+        result = {}
+        with get_db() as db:
+            # 一次查询获取用户对所有 companions 的状态
+            states = (
+                db.query(UserCompanionStateORM)
+                .filter(UserCompanionStateORM.user_id == user_id)
+                .all()
+            )
+            for s in states:
+                result[s.companion_id] = {
+                    "affection": s.affection if s.affection is not None else 0,
+                    "turns": s.turns if s.turns is not None else 0,
+                }
+
+            # 对于没有用户特定状态的 companions，查询全局状态
+            companion_ids = set(self._companions.keys()) - set(result.keys())
+            if companion_ids:
+                global_states = (
+                    db.query(CompanionStateORM)
+                    .filter(CompanionStateORM.companion_id.in_(companion_ids))
+                    .all()
+                )
+                for gs in global_states:
+                    result[gs.companion_id] = {
+                        "affection": gs.affection if gs.affection is not None else 0,
+                        "turns": gs.turns if gs.turns is not None else 0,
+                    }
+
+        return result
+
+    def _batch_get_chatted_info(self, user_id: Optional[int]) -> tuple:
+        """批量获取所有有对话的 companion 信息
+
+        Returns:
+            (chatted_ids: Set[str], last_messages: Dict[str, dict])
+        """
+        chatted_ids = set()
+        last_messages = {}
+
+        with get_db() as db:
+            # 一次查询获取所有有对话记录的 companion
+            if user_id:
+                # 查询指定用户的对话记录
+                query = (
+                    db.query(
+                        ShortTermMessageORM.companion_id,
+                        ShortTermMessageORM.content,
+                        ShortTermMessageORM.created_at,
+                    )
+                    .filter(ShortTermMessageORM.user_id == user_id)
+                    .order_by(ShortTermMessageORM.created_at.desc())
+                )
+                rows = query.all()
+
+                # 按 companion_id 分组，获取每个 companion 的最近一条消息
+                seen_companions = set()
+                for companion_id, content, created_at in rows:
+                    if companion_id not in seen_companions:
+                        seen_companions.add(companion_id)
+                        chatted_ids.add(companion_id)
+                        last_messages[companion_id] = {
+                            "content": content,
+                            "timestamp": created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at),
+                        }
+                        # 已经找到所有 companions 的最近消息，可以提前退出
+                        if len(seen_companions) >= len(self._companions):
+                            break
+            else:
+                # 未登录用户：查询所有 companions 的对话记录
+                query = (
+                    db.query(
+                        ShortTermMessageORM.companion_id,
+                        ShortTermMessageORM.content,
+                        ShortTermMessageORM.created_at,
+                    )
+                    .order_by(ShortTermMessageORM.created_at.desc())
+                )
+                rows = query.all()
+
+                seen_companions = set()
+                for companion_id, content, created_at in rows:
+                    if companion_id not in seen_companions:
+                        seen_companions.add(companion_id)
+                        chatted_ids.add(companion_id)
+                        last_messages[companion_id] = {
+                            "content": content,
+                            "timestamp": created_at.isoformat() if hasattr(created_at, 'isoformat') else str(created_at),
+                        }
+                        if len(seen_companions) >= len(self._companions):
+                            break
+
+        return chatted_ids, last_messages
+
+    def _batch_get_user_affections(self, user_id: int) -> Dict[str, float]:
+        """批量获取用户对所有 companions 的亲密度
+
+        Returns:
+            Dict[companion_id, affection]
+        """
+        result = {}
+        with get_db() as db:
+            states = (
+                db.query(UserCompanionStateORM)
+                .filter(UserCompanionStateORM.user_id == user_id)
+                .all()
+            )
+            for s in states:
+                result[s.companion_id] = s.affection if s.affection is not None else 0
+
+            # 对于没有用户特定状态的 companions，使用全局亲密度
+            companion_ids = set(self._companions.keys()) - set(result.keys())
+            if companion_ids:
+                global_states = (
+                    db.query(CompanionStateORM)
+                    .filter(CompanionStateORM.companion_id.in_(companion_ids))
+                    .all()
+                )
+                for gs in global_states:
+                    result[gs.companion_id] = gs.affection if gs.affection is not None else 0
+
+        return result
+
+    def _build_companion_dict(self, companion: "Companion", user_id: Optional[int], user_states: Dict[str, dict]) -> dict:
+        """使用预查询的状态数据构建 companion 字典（避免 to_dict 中的 N+1）"""
+        avatar = companion.profile.avatar_url
+        is_generating = avatar == "__GENERATING__"
+        if not avatar or is_generating:
+            avatar = f"https://api.dicebear.com/7.x/avataaars/svg?seed={companion.profile.id}"
+
+        state_payload = companion.state.model_dump()
+
+        # 使用预查询的用户状态
+        if user_id is not None and companion.profile.id in user_states:
+            user_state = user_states[companion.profile.id]
+            state_payload["affection"] = user_state["affection"]
+            state_payload["turns"] = user_state["turns"]
+
+        return {
+            "profile": companion.profile.model_dump(),
+            "state": state_payload,
+            "avatar": avatar,
+            "avatar_generating": is_generating,
+        }
+
+    def _get_user_info(self, user_id: int) -> dict:
+        """获取用户信息（username, nickname）"""
+        with get_db() as db:
+            user = db.query(UserORM).filter(UserORM.id == user_id).first()
+            if user:
+                return {
+                    "user_id_str": str(user_id),
+                    "username": (user.username or "").strip(),
+                    "nickname": (user.nickname or "").strip()
+                }
+        return {}
+
+    def _get_user_affection(self, companion: Companion, user_id: int) -> float:
+        """获取用户对指定智能体的亲密度"""
+        with get_db() as db:
+            ur = (
+                db.query(UserCompanionStateORM)
+                .filter(
+                    UserCompanionStateORM.user_id == user_id,
+                    UserCompanionStateORM.companion_id == companion.profile.id,
+                )
+                .first()
+            )
+            if ur and ur.affection is not None:
+                return ur.affection
+        # 没有用户特定记录，返回全局亲密度
+        return companion.state.affection if companion.state else 0
+
+    def _get_user_turns(self, companion: Companion, user_id: int) -> int:
+        """获取用户与指定智能体的对话轮数"""
+        with get_db() as db:
+            ur = (
+                db.query(UserCompanionStateORM)
+                .filter(
+                    UserCompanionStateORM.user_id == user_id,
+                    UserCompanionStateORM.companion_id == companion.profile.id,
+                )
+                .first()
+            )
+            if ur and ur.turns is not None:
+                return ur.turns
+        # 没有用户特定记录，返回全局轮数
+        return companion.state.turns if companion.state else 0
+
+    def _is_my_companion(self, companion: Companion, user_info: dict) -> bool:
+        """判断是否是当前用户创建的智能体"""
+        if not user_info:
+            return False
+
+        created_by = (companion.profile.created_by or "").strip()
+        return (
+            created_by == user_info["user_id_str"] or
+            created_by == user_info["username"] or
+            created_by == user_info["nickname"]
+        )
+
+    def _sort_mine_chatted(self, items: List[Dict]) -> List[Dict]:
+        """排序：按 max(创建时间, 最后消息时间) 降序"""
+        def get_sort_key(item: Dict) -> str:
+            """获取排序依据：max(创建时间, 最后消息时间)"""
+            created_at = (item.get("profile") or {}).get("created_at", "") or ""
+            last_message_time = item.get("last_message_time", "") or ""
+            # 比较两个时间字符串，返回较大的那个
+            if last_message_time > created_at:
+                return last_message_time
+            return created_at
+
+        # 按 max(创建时间, 最后消息时间) 降序排序
+        items.sort(key=get_sort_key, reverse=True)
+        return items
+
     def update(self, companion_id: str, data: dict) -> Optional[Companion]:
         companion = self._companions.get(companion_id)
         if not companion:
             return None
 
         # 更新内存中的 profile（添加 mbti 支持）
-        updatable = {"name", "age", "gender", "city", "personality", "background", "speech_style", "hobbies", "values", "fears", "love_view", "daily_routine", "favorite_things", "mbti", "sexual_orientation", "life_story", "cultural_values", "gender_perspective", "avatar_url", "created_by", "language"}
+        updatable = {"name", "age", "gender", "city", "personality", "background", "speech_style", "hobbies", "values", "fears", "love_view", "daily_routine", "favorite_things", "mbti", "sexual_orientation", "life_story", "cultural_values", "gender_perspective", "avatar_url", "created_by", "language","created_at"}
         for key in updatable:
             if key in data:
                 setattr(companion.profile, key, data[key])
@@ -540,7 +731,7 @@ class CompanionManager:
                     city,
                 )
 
-        # 同步更新 PostgreSQL
+        # 同步更新 MySQL
         with get_db() as db:
             row = db.query(CompanionORM).filter(CompanionORM.id == companion_id).first()
             if row:

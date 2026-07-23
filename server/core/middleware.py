@@ -1,31 +1,46 @@
-"""Request timing middleware for API observability."""
 import logging
-import time
-
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
-logger = logging.getLogger("api.timing")
+from core.auth import verify_token
 
-SLOW_MS = int(__import__("os").getenv("API_SLOW_MS", "500"))
+logger = logging.getLogger(__name__)
+
+# 不需要认证的路径
+WHITE_LIST = [
+    "/api/auth/login",
+    "/api/auth/register",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/api/admin/login",
+]
 
 
-class TimingMiddleware(BaseHTTPMiddleware):
+class TokenAuthMiddleware(BaseHTTPMiddleware):
+    """全局 Token 认证中间件"""
+
     async def dispatch(self, request: Request, call_next):
-        if not request.url.path.startswith(("/api/", "/companions")):
+        path = request.url.path
+
+        # 白名单放行
+        if any(path.startswith(wh) for wh in WHITE_LIST):
+            request.state.user_id = None
             return await call_next(request)
 
-        start = time.perf_counter()
-        response = await call_next(request)
-        elapsed_ms = (time.perf_counter() - start) * 1000
-        response.headers["X-Response-Time-Ms"] = f"{elapsed_ms:.1f}"
+        # 提取 Token（从 Header 或 Query）
+        token = request.headers.get("x-token") or request.query_params.get("token")
 
-        if elapsed_ms >= SLOW_MS:
-            logger.warning(
-                "Slow request %s %s %.0fms status=%s",
-                request.method,
-                request.url.path,
-                elapsed_ms,
-                response.status_code,
-            )
+        # 验证 Token
+        user_id = verify_token(token) if token else None
+
+        # 调试日志
+        if token:
+            logger.info("[Middleware] path=%s token=%s... user_id=%s", path, token[:8], user_id)
+
+        # 存入 request.state
+        request.state.user_id = user_id
+
+        response = await call_next(request)
         return response

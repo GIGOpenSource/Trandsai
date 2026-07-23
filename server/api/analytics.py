@@ -1,15 +1,18 @@
+from typing import Optional
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from core.database import ButtonClickORM, PageViewORM, get_db
 
-router = APIRouter()
+router = APIRouter(tags=["数据分析"])
 
 
 class PageViewPayload(BaseModel):
     page_path: str
     page_name: str
     device_id: str
+    user_id: Optional[int] = None  # 新增：用户ID
     language: str = ""
 
 
@@ -18,30 +21,33 @@ class ButtonClickPayload(BaseModel):
     button_name: str
     page_path: str
     device_id: str
+    user_id: Optional[int] = None  # 新增：用户ID
     language: str = ""
 
 
-@router.post("/api/analytics/page-view")
+@router.post("/api/analytics/page-view", summary="记录页面浏览")
 async def track_page_view(data: PageViewPayload):
     with get_db() as db:
         db.add(PageViewORM(
             page_path=data.page_path,
             page_name=data.page_name,
-            device_id=data.device_id,
+            user_id=data.user_id,  # 保存 user_id
+            device_id=data.device_id,  # 保留 device_id
             language=data.language,
         ))
         db.commit()
     return {"ok": True}
 
 
-@router.post("/api/analytics/button-click")
+@router.post("/api/analytics/button-click", summary="记录按钮点击")
 async def track_button_click(data: ButtonClickPayload):
     with get_db() as db:
         db.add(ButtonClickORM(
             button_id=data.button_id,
             button_name=data.button_name,
             page_path=data.page_path,
-            device_id=data.device_id,
+            user_id=data.user_id,  # 保存 user_id
+            device_id=data.device_id,  # 保留 device_id
             language=data.language,
         ))
         db.commit()

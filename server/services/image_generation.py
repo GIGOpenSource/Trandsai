@@ -15,11 +15,6 @@ from core.config import BASE_DIR
 from services.cos_storage import is_cos_enabled, upload_file_to_cos, upload_bytes_to_cos
 logger = logging.getLogger(__name__)
 
-IMAGE_CACHE_DIR = Path(
-    os.environ.get("IMAGE_STORAGE_DIR", str(Path(BASE_DIR) / "data" / "images"))
-).expanduser().resolve()
-IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
 # xAI API 配置
 _XAI_API_KEY = os.environ.get("XAI_API_KEY", "")
 _XAI_IMAGE_API_URL = "https://api.x.ai/v1/images/generations"
@@ -321,45 +316,25 @@ def generate_image_with_alibaba(
 
 
 
-def _get_cache_path(prompt: str) -> Path:
-    """根据 prompt 生成缓存文件路径"""
+def _get_cos_cache_key(prompt: str) -> str:
+    """根据 prompt 生成 COS 缓存 key"""
     key = hashlib.md5(prompt.encode("utf-8")).hexdigest()
-    return IMAGE_CACHE_DIR / f"{key}.png"
+    return f"images/{key}.png"
 
 
-def _is_valid_cache_file(path: Path, min_size: int = 1000) -> bool:
-    """缓存文件存在且大小合理（避免命中损坏文件）"""
-    try:
-        return path.exists() and path.stat().st_size >= min_size
-    except Exception:
-        return False
-
-
-# def _to_local_image_url(path: Path) -> str:
-#     """将本地图片文件路径转换为项目可访问的静态 URL。确保返回有效路径。"""
-#     if not path or not path.name:
-#         return "https://picsum.photos/600/600?random=1"
-#
-#     return f"/data/images/{path.name}"
-
-def _to_local_image_url(path: Path) -> str:
-    """将本地图片文件路径转换为访问 URL。
-    优先返回 COS URL，若 COS 未配置或上传失败则返回本地路径。
-    注意：本地路径 /data/images/xxx 依赖 main.py 中的静态文件挂载。
+def _upload_image_to_cos(data: bytes, filename: str = None) -> str:
+    """上传图片数据到 COS，返回 COS URL。
+    如果 COS 未配置或上传失败，返回空字符串。
     """
-    if not path or not path.name:
-        return "https://picsum.photos/600/600?random=1"
+    if not filename:
+        filename = f"{hashlib.md5(data).hexdigest()[:16]}.png"
 
-    # COS 已配置时，尝试上传并返回公网 URL
-    if is_cos_enabled():
-        cos_key = f"images/{path.name}"
-        url = upload_file_to_cos(str(path), cos_key)
-        if url:
-            return url
-        # COS 上传失败，记录日志并回退到本地路径（main.py 已挂载 /data/images）
-        logger.warning("COS 上传失败，回退到本地路径: %s", path.name)
-
-    return f"/data/images/{path.name}"
+    cos_key = f"images/{filename}"
+    url = upload_bytes_to_cos(data, cos_key)
+    if url:
+        return url
+    logger.warning("COS 上传失败: %s", filename)
+    return ""
 
 def _build_pollinations_url(
     prompt: str,
@@ -383,34 +358,32 @@ def _build_pollinations_url(
     return f"https://image.pollinations.ai/prompt/{encoded}?{params}"
 
 
-def _build_picsum_url(width: int = 600, height: int = 600) -> str:
-    """构建 Picsum 随机图片 URL"""
-    seed = random.randint(1, 100000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
-
-
-def generate_image_with_xai(prompt: str, width: int = 1024, height: int = 1024) -> Optional[str]:
+def generate_image_with_xai(prompt: str, width: int = 1024, height: int = 1024, config: dict = None) -> Optional[str]:
     """使用 xAI (Grok) API 生成图片，返回图片 URL。
-    需要设置环境变量 XAI_API_KEY。
+    优先从 config 读取 api_key，否则回退到环境变量 XAI_API_KEY。
     """
-    if not _XAI_API_KEY:
+    api_key = (config or {}).get("api_key") or _XAI_API_KEY
+    if not api_key:
         logger.info("xAI image generation skipped: missing XAI_API_KEY")
         return None
+
+    model = (config or {}).get("model", "grok-imagine-image-quality")
+    base_url = (config or {}).get("base_url", _XAI_IMAGE_API_URL)
 
     try:
 
         payload = json.dumps({
-            "model": "grok-2-image",
+            "model": model,
             "prompt": prompt,
             "n": 1,
             "response_format": "url"
         }).encode("utf-8")
 
         req = urllib.request.Request(
-            _XAI_IMAGE_API_URL,
+            base_url,
             data=payload,
             headers={
-                "Authorization": f"Bearer {_XAI_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             method="POST",
@@ -435,40 +408,21 @@ def generate_image_with_xai_cached(
     width: int = 1024,
     height: int = 1024,
 ) -> str:
-    """使用 xAI 生成图片并缓存到本地。返回本地缓存路径的 URL。
-    如果缓存已存在，直接返回。
-    如果 xAI 不可用，回退到 Pollinations.ai。
+    """使用 xAI 生成图片并上传到COS。返回COS URL。
+    如果 xAI 不可用，回退到通用生成管道。
     """
     enhancement = _STYLE_ENHANCEMENTS.get(style, _STYLE_ENHANCEMENTS["anime"])
     full_prompt = f"{prompt}. {enhancement}"
 
-    cache_key = f"xai|{style}|{width}x{height}|{full_prompt}"
-    cache_path = _get_cache_path(cache_key)
-    if _is_valid_cache_file(cache_path):
-        url = _to_local_image_url(cache_path)
-        if url and not ("/src/" in url or "main.tsx" in url):
-            return url
-
     # 尝试 xAI
     xai_url = generate_image_with_xai(full_prompt, width, height)
     if xai_url:
-        try:
-            req = urllib.request.Request(xai_url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=60) as resp:
-                image_data = resp.read()
-                with open(str(cache_path), "wb") as f:
-                    f.write(image_data)
-                if _is_valid_cache_file(cache_path):
-                    return _to_local_image_url(cache_path)
-            if _is_valid_cache_file(cache_path):
-                url = _to_local_image_url(cache_path)
-                if url and not ("/src/" in url or "main.tsx" in url):
-                    return url
-        except Exception as e:
-            logger.warning("xAI image download failed: %s", e)
+        cos_url = _download_and_upload_to_cos(xai_url)
+        if cos_url and cos_url.startswith("http"):
+            return cos_url
 
-    # 回退到通用缓存管道
-    logger.info("xAI generation unavailable, fallback to generic cache pipeline")
+    # 回退到通用生成管道
+    logger.info("xAI generation unavailable, fallback to generic pipeline")
     return generate_image_with_cache(prompt, style, width, height)
 
 
@@ -476,9 +430,6 @@ def _download_and_upload_to_cos(url: str, filename: str = None) -> str:
     """下载外部图片并上传到COS，返回COS URL。
     如果下载或上传失败，返回原始URL。
     """
-    import uuid
-    import hashlib
-
     if not url or not url.startswith(('http://', 'https://')):
         return url
 
@@ -499,33 +450,28 @@ def _download_and_upload_to_cos(url: str, filename: str = None) -> str:
             logger.warning("Downloaded image too small (%d bytes), skipping upload", len(image_data))
             return url
 
-        # 保存到本地缓存
-        local_path = IMAGE_CACHE_DIR / filename
-        with open(str(local_path), 'wb') as f:
-            f.write(image_data)
-
         # 上传到COS
         cos_key = f"images/{filename}"
-        cos_url = upload_file_to_cos(str(local_path), cos_key)
+        cos_url = upload_bytes_to_cos(image_data, cos_key)
         if cos_url:
             logger.info("Downloaded and uploaded to COS: %s -> %s", url[:50], cos_url[:80])
             return cos_url
 
-        # COS上传失败，返回本地路径
-        logger.warning("COS upload failed for %s, returning local path", filename)
-        return f"/data/images/{filename}"
+        # COS上传失败，返回原始URL
+        logger.warning("COS upload failed for %s, returning original URL", filename)
+        return url
 
     except Exception as e:
         logger.warning("Failed to download and upload image from %s: %s", url[:50], e)
         return url
 
 
-def _generate_local_image(width: int = 600, height: int = 600) -> str:
-    """当外部 API 全部失败时，下载真实照片并上传到COS。
-    返回COS URL或本地路径，确保不依赖外部URL。
+def _generate_fallback_image(width: int = 600, height: int = 600) -> str:
+    """当外部 API 全部失败时，返回空字符串。
+    不再依赖 picsum.photos 等外部随机图服务。
     """
-    picsum_url = _build_picsum_url(width, height)
-    return _download_and_upload_to_cos(picsum_url)
+    logger.warning("所有图片生成服务均失败，无可用的回退方案")
+    return ""
 
 
 def generate_image(
@@ -538,9 +484,8 @@ def generate_image(
     nologo: bool = True,
 ) -> str:
     """
-    生成图片并返回本地缓存路径 URL（/data/images/...）。
-    统一策略：无论上游提供商返回何种地址，都会先下载到本地缓存后再返回，
-    避免前端继续依赖外部 URL。
+    生成图片并返回COS URL。
+    统一策略：无论上游提供商返回何种地址，都会上传到COS后返回。
     """
     return generate_image_with_cache(
         prompt=prompt,
@@ -563,66 +508,26 @@ def generate_image_with_cache(
     nologo: bool = True,
 ) -> str:
     """
-    生成图片并缓存到本地。返回本地缓存路径的 URL。
-    如果缓存已存在，直接返回。
+    生成图片并上传到COS，返回COS URL。
     注意：此方法会同步下载图片，可能耗时较长，建议在后台任务中使用。
     """
     enhancement = _STYLE_ENHANCEMENTS.get(style, _STYLE_ENHANCEMENTS["anime"])
     full_prompt = f"{prompt}. {enhancement}"
 
-    cache_key = f"{style}|{width}x{height}|{model}|{seed}|{nologo}|{full_prompt}"
-    cache_path = _get_cache_path(cache_key)
-    if _is_valid_cache_file(cache_path):
-        url = _to_local_image_url(cache_path)
-        if url and not ("/src/" in url or "main.tsx" in url):
-            return url
-        # 缓存文件无效时继续生成
-
-    # 主路径1：阿里云百炼生成 -> 下载落盘到本地缓存 -> 返回本地/COS URL
+    # 主路径：阿里云百炼生成 -> 上传到COS -> 返回COS URL
     configs = _get_active_image_gen_configs()
     alibaba_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "alibaba"]
     for config in alibaba_configs:
-        url= generate_image_with_alibaba(full_prompt, width, height, config=config)
-        # 上传
+        url = generate_image_with_alibaba(full_prompt, width, height, config=config)
         if not url:
             continue
-        try:
-            import requests
-            resp = requests.get(url, timeout=60)
-            resp.raise_for_status()
-            # 先保存到本地缓存（用于去重判断）
-            with open(str(cache_path), "wb") as f:
-                f.write(resp.content)
-            if _is_valid_cache_file(cache_path):
-                return _to_local_image_url(cache_path)
-        except Exception as e:
-            logger.warning("Alibaba image download failed: %s", e)
+        cos_url = _download_and_upload_to_cos(url)
+        if cos_url and cos_url.startswith("http"):
+            return cos_url
 
-
-    # 主路径2：火山方舟生成 -> 下载落盘到指定本地目录 -> 返回本地 URL
-    configs = _get_active_image_gen_configs()
-    volcano_configs = [cfg for cfg in configs if cfg.get("provider", "").lower() == "volcano"]
-    for config in volcano_configs:
-        url = generate_image_with_volcano(full_prompt, width, height, config=config)
-        if not url:
-            continue
-        try:
-            import requests
-            resp = requests.get(url, timeout=60)
-            resp.raise_for_status()
-            # 先保存到本地缓存（用于去重判断）
-            with open(str(cache_path), "wb") as f:
-                f.write(resp.content)
-            if _is_valid_cache_file(cache_path):
-                return _to_local_image_url(cache_path)
-        except Exception as e:
-            logger.warning("Volcano image download failed: %s", e)
-
-    # 回退：使用高质量 picsum 真实照片，确保朋友圈始终可用且自然
-    # 避免复杂 copy 逻辑和潜在的本地文件不一致问题
-    local_url = _generate_local_image(width, height)
-    logger.info("All upstream image providers failed, using reliable picsum real-photo fallback")
-    return local_url
+    # AI服务失败，返回空字符串
+    logger.warning("图片生成服务失败")
+    return ""
 
 
 def generate_avatar_prompt(profile: dict, style: str = "anime") -> str:

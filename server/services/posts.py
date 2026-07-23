@@ -239,14 +239,15 @@ def toggle_post_like(
         existing = query.first()
         if existing:
             db.delete(existing)
+            # 修复：不使用 func.max()，改用 Python max()，兼容 SQLite
+            current_count = db.query(PostORM.likes_count).filter_by(id=post_id).scalar() or 0
+            new_count = max(current_count - 1, 0)
             db.query(PostORM).filter_by(id=post_id).update(
-                {PostORM.likes_count: func.max(PostORM.likes_count - 1, 0)},
+                {PostORM.likes_count: new_count},
                 synchronize_session=False,
             )
             db.flush()
-            likes_count = (
-                db.query(PostORM.likes_count).filter_by(id=post_id).scalar() or 0
-            )
+            likes_count = new_count
             liked = False
         else:
             try:

@@ -2,16 +2,19 @@ import hashlib
 import os
 import secrets
 import time
-from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Body, Header, HTTPException
+from pydantic import BaseModel, Field
 
-from core.database import AdminTokenORM, CompanionORM, CompanionStateORM, UserORM, get_db
-from core.rest_async import run_rest
-
-router = APIRouter()
+from core.database import CompanionORM, CompanionStateORM, UserCompanionStateORM, UserORM, get_db
+from core.auth import (
+    generate_token, delete_token, verify_token as redis_verify_token,
+    generate_admin_token, verify_admin_token, delete_admin_token,
+    clear_all_admin_tokens as _redis_clear_admin_tokens,
+)
+router = APIRouter(tags=["认证"])
 
 _PBKDF2_ROUNDS = 200_000
 _PASSWORD_HASH_PREFIX = "pbkdf2_sha256"
@@ -61,38 +64,20 @@ def _verify_password(password: str, stored_hash: str) -> bool:
     return secrets.compare_digest(_legacy_password_hash(password), stored_hash)
 
 
-# ===== 管理员 Token（数据库持久化存储，24小时有效）=====
-# 保留此变量供外部清空所有 token 时使用（如修改密码后）
-_admin_token_store: dict[str, dict] = {}
+# ===== 管理员 Token（Redis 存储，24小时有效）=====
 
 
 def create_token(password: str) -> Optional[str]:
-    """验证密码并生成 24 小时有效 Token，持久化到数据库"""
+    """验证密码并生成 24 小时有效 Token，存储到 Redis"""
     if password != _get_admin_password():
         return None
-    token = _hash_token(f"{password}{time.time()}")
-    expire = datetime.now(timezone.utc) + timedelta(hours=24)
-    with get_db() as db:
-        db.add(AdminTokenORM(token=token, expire_at=expire))
-    # 同时写入内存缓存，避免同一进程内重复查库
-    _admin_token_store[token] = {"expire": expire.timestamp()}
-    return token
+    password_hash = _hash_token(password)
+    return generate_admin_token(password_hash)
 
 
 def verify_token(token: str) -> bool:
-    """校验管理员 Token 是否有效（查库并清理过期 token）"""
-    now = datetime.now(timezone.utc)
-    with get_db() as db:
-        # 先清理所有过期 token
-        expired = db.query(AdminTokenORM).filter(AdminTokenORM.expire_at < now).all()
-        for row in expired:
-            db.delete(row)
-            _admin_token_store.pop(row.token, None)
-        # 查询当前 token
-        row = db.query(AdminTokenORM).filter(AdminTokenORM.token == token).first()
-        if not row:
-            return False
-        return True
+    """校验管理员 Token 是否有效（查 Redis）"""
+    return verify_admin_token(token)
 
 
 # ===== 用户 Token（数据库存储，7天有效，服务器重启不丢失）=====
@@ -108,62 +93,13 @@ def create_user_token(user_id: int) -> str:
             user.token = token
             user.token_expire = expire
             db.commit()
-    _cache_user_token(token, user_id)
-    try:
-        from core.session_store import token_cache_set
-        token_cache_set(token, user_id, 7 * 24 * 3600)
-    except Exception:
-        pass
     return token
-
-
-# ===== 用户 Token LRU 缓存（TTL 300s，减轻 DB 压力）=====
-_TOKEN_CACHE_TTL = float(os.getenv("TOKEN_CACHE_TTL", "300"))
-_token_cache: "OrderedDict[str, tuple]" = OrderedDict()
-_TOKEN_CACHE_MAX = 4096
-
-
-def _cache_user_token(token: str, user_id: int) -> None:
-    _token_cache[token] = (user_id, time.monotonic() + _TOKEN_CACHE_TTL)
-    _token_cache.move_to_end(token)
-    while len(_token_cache) > _TOKEN_CACHE_MAX:
-        _token_cache.popitem(last=False)
-
-
-def invalidate_user_token_cache(token: str = None) -> None:
-    if token:
-        _token_cache.pop(token, None)
-        try:
-            from core.session_store import token_cache_delete
-            token_cache_delete(token)
-        except Exception:
-            pass
-    else:
-        _token_cache.clear()
 
 
 def verify_user_token(token: str) -> Optional[int]:
     """校验用户 Token，返回 user_id 或 None"""
     if not token:
         return None
-
-    cached = _token_cache.get(token)
-    if cached:
-        user_id, expire_mono = cached
-        if time.monotonic() < expire_mono:
-            _token_cache.move_to_end(token)
-            return user_id
-        _token_cache.pop(token, None)
-
-    try:
-        from core.session_store import token_cache_get
-        redis_uid = token_cache_get(token)
-        if redis_uid:
-            _cache_user_token(token, redis_uid)
-            return redis_uid
-    except Exception:
-        pass
-
     from core.database import get_db, UserORM
     with get_db() as db:
         user = db.query(UserORM).filter(UserORM.token == token).first()
@@ -174,15 +110,38 @@ def verify_user_token(token: str) -> Optional[int]:
         if expire.tzinfo is None:
             expire = expire.replace(tzinfo=timezone.utc)
         if now > expire:
+            # Token 已过期，清空
             user.token = ""
             user.token_expire = None
             db.commit()
             return None
-        _cache_user_token(token, user.id)
         return user.id
 
 
-@router.post("/api/auth/register")
+@router.post("/api/auth/register",
+             summary="用户注册",
+             description="创建新用户账号，返回用户信息和Token",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "注册成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "token": "abc123...",
+                                 "user": {
+                                     "id": 1,
+                                     "username": "user001",
+                                     "nickname": "用户昵称",
+                                     "gender": "male",
+                                     "age": 25
+                                 }
+                             }
+                         }
+                     }
+                 },
+                 400: {"description": "用户名已存在或参数错误"}
+             })
 async def user_register(data: dict):
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
@@ -223,11 +182,33 @@ async def user_register(data: dict):
             "occupation": user.occupation or "",
         }
 
-    token = create_user_token(user_id)
+    token = generate_token(user_id)
     return {"token": token, "user": out_user}
 
 
-@router.post("/api/auth/login")
+@router.post("/api/auth/login",
+             summary="用户登录",
+             description="使用用户名和密码登录，返回用户信息和Token",
+             response_model=dict,
+             responses={
+                 200: {
+                     "description": "登录成功",
+                     "content": {
+                         "application/json": {
+                             "example": {
+                                 "token": "abc123...",
+                                 "user": {
+                                     "id": 1,
+                                     "username": "user001",
+                                     "nickname": "用户昵称",
+                                     "role": "user"
+                                 }
+                             }
+                         }
+                     }
+                 },
+                 401: {"description": "用户名或密码错误"}
+             })
 async def user_login(data: dict):
     username = (data.get("username") or "").strip()
     password = data.get("password") or ""
@@ -246,6 +227,7 @@ async def user_login(data: dict):
             "id": user.id,
             "username": user.username,
             "nickname": user.nickname,
+            "role": user.role or "user",
             "gender": user.gender,
             "sexual_orientation": user.sexual_orientation or "",
             "age": user.age,
@@ -253,43 +235,66 @@ async def user_login(data: dict):
             "occupation": user.occupation or "",
         }
 
-    token = create_user_token(user_id)
+    token = generate_token(user_id)
     return {"token": token, "user": out_user}
+@router.post("/api/auth/logout", summary="用户登出")
+async def user_logout(x_token: Optional[str] = Header(None)):
+  """登出：删除 Redis 中的 Token"""
+  if x_token:
+      delete_token(x_token)
+  return {"ok": True}
 
-
-@router.get("/api/auth/me")
+@router.get("/api/auth/me",
+            summary="获取当前用户信息",
+            description="根据Token获取当前登录用户的详细信息",
+            response_model=dict,
+            responses={
+                200: {
+                    "description": "成功",
+                    "content": {
+                         "application/json": {
+                             "example": {
+                                 "id": 1,
+                                 "username": "user001",
+                                 "nickname": "用户昵称",
+                                 "gender": "male",
+                                 "age": 25,
+                                 "region": "北京",
+                                 "occupation": "工程师",
+                                 "avatar_url": "https://example.com/avatar.jpg"
+                             }
+                         }
+                    }
+                },
+                401: {"description": "未登录或Token已过期"}
+            })
 async def user_me(x_token: Optional[str] = Header(None)):
-    user_id = verify_user_token(x_token) if x_token else None
+    user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录或Token已过期")
 
-    def _load(uid: int):
-        with get_db() as db:
-            user = db.query(UserORM).filter(UserORM.id == uid).first()
-            if not user:
-                return None
-            return {
-                "id": user.id,
-                "username": user.username,
-                "nickname": user.nickname,
-                "gender": user.gender,
-                "sexual_orientation": user.sexual_orientation,
-                "age": user.age,
-                "region": (user.region or "").strip() if getattr(user, "region", None) is not None else "",
-                "occupation": (user.occupation or "").strip() if getattr(user, "occupation", None) is not None else "",
-                "avatar_url": getattr(user, "avatar_url", None) or "",
-                "created_at": user.created_at.isoformat() if user.created_at else None,
-            }
+    with get_db() as db:
+        user = db.query(UserORM).filter(UserORM.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="用户不存在")
 
-    data = await run_rest(_load, user_id)
-    if data is None:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    return data
+        return {
+            "id": user.id,
+            "username": user.username,
+            "nickname": user.nickname,
+            "gender": user.gender,
+            "sexual_orientation": user.sexual_orientation,
+            "age": user.age,
+            "region": (user.region or "").strip() if getattr(user, "region", None) is not None else "",
+            "occupation": (user.occupation or "").strip() if getattr(user, "occupation", None) is not None else "",
+            "avatar_url": getattr(user, "avatar_url", None) or "",
+            "created_at": user.created_at.isoformat() if user.created_at else None,
+        }
 
 
-@router.patch("/api/auth/me")
+@router.patch("/api/auth/me", summary="更新当前用户信息")
 async def user_update_me(data: dict, x_token: Optional[str] = Header(None)):
-    user_id = verify_user_token(x_token) if x_token else None
+    user_id = redis_verify_token(x_token) if x_token else None
     if not user_id:
         raise HTTPException(status_code=401, detail="未登录或Token已过期")
 
@@ -336,70 +341,53 @@ async def user_update_me(data: dict, x_token: Optional[str] = Header(None)):
 
 def clear_all_admin_tokens():
     """清空所有管理员 token（如修改密码后调用）"""
-    with get_db() as db:
-        db.query(AdminTokenORM).delete()
-    _admin_token_store.clear()
+    _redis_clear_admin_tokens()
 
 
-@router.post("/api/auth/logout")
-async def user_logout(x_token: Optional[str] = Header(None)):
-    """登出：清除 DB token 与 Redis/内存缓存。"""
-    if not x_token:
-        return {"ok": True}
-    invalidate_user_token_cache(x_token)
-    with get_db() as db:
-        user = db.query(UserORM).filter(UserORM.token == x_token).first()
-        if user:
-            user.token = ""
-            user.token_expire = None
-    return {"ok": True}
+@router.get("/api/users/stats", summary="获取用户统计数据")
+async def user_stats(x_token: Optional[str] = Header(None)):
+    """获取当前用户的统计数据（亲密度>5的伴侣数、总对话轮数、陪伴最久天数）"""
+    user_id = redis_verify_token(x_token) if x_token else None
+    if not user_id:
+        raise HTTPException(status_code=401, detail="请先登录")
 
-
-def _compute_user_stats(user_id: Optional[int]) -> dict:
     from datetime import datetime, timezone
 
     with get_db() as db:
-        companions = db.query(CompanionORM).all()
-        companion_count = len(companions)
+        # 获取当前用户与所有智能体的亲密度关系
+        user_states = db.query(UserCompanionStateORM).filter(
+            UserCompanionStateORM.user_id == user_id
+        ).all()
 
+        # 统计亲密度>5的伴侣数、总对话轮数、陪伴最久天数
+        intimate_companion_count = 0
         total_turns = 0
-        for c in companions:
-            state = db.query(CompanionStateORM).filter(
-                CompanionStateORM.companion_id == c.id
-            ).first()
-            if state:
-                total_turns += state.turns or 0
+        max_days_together = 0
+        now = datetime.now(timezone.utc)
 
-        days_together = 0
-        if user_id:
-            user = db.query(UserORM).filter(UserORM.id == user_id).first()
-            if user and user.created_at:
-                now = datetime.now(timezone.utc)
-                created = user.created_at
-                if created.tzinfo is None:
-                    created = created.replace(tzinfo=timezone.utc)
-                days_together = max(1, (now - created).days)
-        elif companions:
-            earliest = None
-            for c in companions:
-                if c.created_at:
-                    if earliest is None or c.created_at < earliest:
-                        earliest = c.created_at
-            if earliest:
-                now = datetime.now(timezone.utc)
-                if earliest.tzinfo is None:
-                    earliest = earliest.replace(tzinfo=timezone.utc)
-                days_together = max(1, (now - earliest).days)
+        for state in user_states:
+            affection = state.affection or 0
+            turns = state.turns or 0
+
+            # 亲密度>5的伴侣
+            if affection > 5:
+                intimate_companion_count += 1
+                total_turns += turns
+
+                # 获取智能体的创建时间来计算陪伴天数
+                companion = db.query(CompanionORM).filter(
+                    CompanionORM.id == state.companion_id
+                ).first()
+                if companion and companion.created_at:
+                    ct = companion.created_at
+                    if ct.tzinfo is None:
+                        ct = ct.replace(tzinfo=timezone.utc)
+                    days = (now - ct).days
+                    if days > max_days_together:
+                        max_days_together = days
 
     return {
-        "companion_count": companion_count,
+        "intimate_companion_count": intimate_companion_count,
         "total_turns": total_turns,
-        "days_together": days_together,
+        "max_days_together": max_days_together,
     }
-
-
-@router.get("/api/users/stats")
-async def user_stats(x_token: Optional[str] = Header(None)):
-    """获取用户统计数据（伴侣数、总对话轮数、陪伴天数）"""
-    user_id = verify_user_token(x_token) if x_token else None
-    return await run_rest(_compute_user_stats, user_id)

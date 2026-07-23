@@ -1,0 +1,379 @@
+/**
+ * @file theme.scss
+ * @description 全局主题与通用样式（对齐 client/ React 版 theme.css + max-w-2xl 壳）。
+ * - 暗色默认（与 React `.dark` 一致）；亮色 `[data-theme="light"]` / `:root:not(.dark)`
+ * - 品牌粉紫仅用于 CTA 渐变（--brand / --brand-end），与 React from-pink-500 to-purple-600 一致
+ * - 由 App.vue 全局 @import
+ */
+
+/* -------------------------------------------------------------------------- */
+/* 设计令牌 — 暗色默认（对齐 React .dark）                                        */
+/* -------------------------------------------------------------------------- */
+:root,
+page,
+[data-theme="dark"] {
+  /* React: --background / --foreground / --card … */
+  --bg: #252525; /* oklch(0.145 ≈ #252525) */
+  --bg-card: #252525;
+  --bg-secondary: #444444; /* oklch(0.269) */
+  --bg-input: #343434; /* oklch(0.205) */
+  --fg: #fafafa; /* oklch(0.985) */
+  --fg-muted: #b5b5b5; /* oklch(0.708) */
+  --border: #444444;
+  /* 交互强调色：Tab/链接高亮用前景色；CTA 用品牌渐变 */
+  --primary: #fafafa;
+  --primary-end: #9333ea;
+  --brand: #ec4899; /* pink-500 */
+  --brand-end: #9333ea; /* purple-600 */
+  --destructive: #ef4444;
+  --safe-tab: 56px;
+}
+
+/* 亮色（对齐 React :root 非 dark） */
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-card: #ffffff;
+  --bg-secondary: #f3f3f5;
+  --bg-input: #f3f3f5;
+  --fg: #030213;
+  --fg-muted: #717182;
+  --border: rgba(0, 0, 0, 0.1);
+  --primary: #030213;
+  --primary-end: #9333ea;
+  --brand: #ec4899;
+  --brand-end: #9333ea;
+  --destructive: #d4183d;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 页面基底                                                                    */
+/* -------------------------------------------------------------------------- */
+page {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    sans-serif;
+  font-size: 28rpx;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+uni-page-body,
+uni-page-wrapper,
+.uni-page-body {
+  height: 100%;
+  display: block;
+  box-sizing: border-box;
+  background: var(--bg);
+}
+
+/* 对齐 React：mx-auto max-w-2xl min-h-screen bg-background */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--bg);
+  width: 100%;
+  max-width: 672px;
+  margin: 0 auto;
+  position: relative;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 88rpx;
+  padding: 0 32rpx;
+}
+
+.app-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 按钮 / 输入 / 卡片 / 骨架                                                    */
+/* -------------------------------------------------------------------------- */
+.btn-primary {
+  background: linear-gradient(90deg, var(--brand), var(--brand-end));
+  color: #fff;
+  border: none;
+  border-radius: 24rpx;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.btn-primary[disabled] {
+  opacity: 0.6;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 24rpx;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+}
+
+.input-field {
+  width: 100%;
+  /* uni-input 默认 height:1.4em + box-sizing:border-box，加 padding 会把可点区域压成 0 */
+  height: auto !important;
+  min-height: 88rpx;
+  line-height: 1.4;
+  overflow: visible;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 24rpx;
+  padding: 20rpx 32rpx;
+  color: var(--fg);
+  font-size: 30rpx;
+  box-sizing: border-box;
+}
+
+/* 确保内部原生 input 可聚焦、可输入 */
+.input-field .uni-input-wrapper,
+.input-field .uni-input-input {
+  height: auto !important;
+  min-height: 1.2em;
+  line-height: inherit;
+  color: inherit;
+  font-size: inherit;
+}
+
+uni-input,
+uni-textarea {
+  pointer-events: auto;
+}
+
+.uni-input-input,
+.uni-textarea-textarea {
+  pointer-events: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* textarea 同样避免默认高度被 padding 压扁 */
+uni-textarea.input-field,
+.input-field.textarea {
+  height: auto !important;
+  min-height: 160rpx;
+  line-height: 1.5;
+  overflow: visible;
+}
+
+uni-textarea.input-field .uni-textarea-textarea,
+.input-field.textarea .uni-textarea-textarea {
+  height: 100%;
+  min-height: 120rpx;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.text-muted {
+  color: var(--fg-muted);
+}
+
+/* 品牌色文字（评论名、链接等，对齐 React pink 强调场景） */
+.text-primary {
+  color: var(--brand);
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 24rpx;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-input) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-input) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 16rpx;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 自定义 TabBar（对齐 React TabBar）                                           */
+/* -------------------------------------------------------------------------- */
+.tab-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 672px;
+  right: auto;
+  bottom: 0;
+  z-index: 50;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border);
+  box-sizing: border-box;
+}
+
+.tab-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 56px;
+  padding: 0 16px;
+}
+
+.tab-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  position: relative;
+  flex: 1;
+  padding: 8rpx 0;
+}
+
+.tab-icon {
+  font-size: 40rpx;
+}
+
+.tab-icon-svg {
+}
+
+.tab-label {
+  font-size: 22rpx;
+}
+
+.tab-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -16rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  background: var(--brand);
+  color: #fff;
+  font-size: 20rpx;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 聊天气泡 / 头像                                                             */
+/* -------------------------------------------------------------------------- */
+.chat-bubble-user {
+  background: linear-gradient(90deg, var(--brand), var(--brand-end));
+  color: #fff;
+  border-radius: 32rpx;
+  padding: 20rpx 28rpx;
+  max-width: 75%;
+}
+
+.chat-bubble-ai {
+  background: var(--bg-secondary);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 32rpx;
+  padding: 20rpx 28rpx;
+  max-width: 75%;
+}
+
+.avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: var(--bg-input);
+}
+
+.avatar-sm {
+  width: 64rpx;
+  height: 64rpx;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Flex / 间距工具类                                                           */
+/* -------------------------------------------------------------------------- */
+.flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.gap-sm {
+  gap: 16rpx;
+}
+
+.px-md {
+  padding-left: 32rpx;
+  padding-right: 32rpx;
+}
+
+.py-sm {
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+}
+
+.mt-md {
+  margin-top: 32rpx;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.flex-1 {
+  flex: 1;
+  min-width: 0;
+}

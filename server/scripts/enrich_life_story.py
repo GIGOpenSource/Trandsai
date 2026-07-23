@@ -144,7 +144,7 @@ def call_llm_for_persona(persona: dict, lang: str) -> str:
     system_text = "You are a professional biographer. Return only valid JSON with a single field 'life_story'."
     user_text = PROMPT_TEMPLATES[lang].format(profile=summary)
 
-    llm = get_llm(temperature=0.9, max_tokens=2048)
+    llm = get_llm(temperature=0.9, max_tokens=1024)
     messages = [
         SystemMessage(content=system_text),
         HumanMessage(content=user_text),

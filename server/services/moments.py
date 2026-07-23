@@ -7,11 +7,10 @@ from typing import List, Optional
 from sqlalchemy import case, desc, func
 from sqlalchemy.exc import IntegrityError
 from dotenv import load_dotenv
-from core.database import CompanionORM, MomentCommentORM, MomentLikeORM, MomentORM, get_db, serialize_datetime
+from core.database import CompanionORM, MomentCommentORM, MomentLikeORM, MomentORM, UserORM, get_db, serialize_datetime
 from core.i18n import normalize_ui_language
 from core.state import get_companion_manager
 from services.agent import get_llm
-from services.llm.client import llm_invoke
 from services.companion_manager import Companion
 from services.image_generation import generate_image_with_cache, generate_moment_image_prompt
 from services.culture_data import infer_language_from_city
@@ -111,13 +110,6 @@ _IMAGE_THEMES = {
 }
 
 
-def _get_random_image_url(theme: str) -> str:
-    """生成随机配图 URL（使用 Unsplash Source）"""
-    # 使用 picsum 或 unsplash 的随机图
-    # 为了稳定性，使用固定的高质量图片池 + 随机参数防缓存
-    width, height = 600, 600
-    seed = random.randint(1, 100000)
-    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
 
 
 def _build_moment_prompt(companion: Companion, lang: str = "zh") -> str:
@@ -373,12 +365,12 @@ def generate_moment_caption(companion: Companion, lang: str = "zh", max_retries:
     """调用 LLM 为伴侣生成一条朋友圈文案，带有去重机制"""
     companion_id = companion.profile.id if companion.profile else None
     try:
-        max_token = int(os.getenv("MAX_TOKENS", 512))
+        max_token = int(os.getenv("MAX_TOKENS", 1024))
         llm = get_llm(temperature=0.9, max_tokens=max_token)
         prompt = _build_moment_prompt(companion, lang)
 
         for attempt in range(max_retries):
-            resp = llm_invoke(llm, [("human", prompt)], node="moment_caption")
+            resp = llm.invoke([("human", prompt)])
             raw_content = resp.content
             text = raw_content.strip()
             text = text.strip('"').strip("'").strip()
@@ -687,7 +679,7 @@ def _image_url_valid(image_url: Optional[str]) -> Optional[str]:
     return cleaned
 
 
-def get_moment_detail(moment_id: int, device_id: str = "") -> Optional[dict]:
+def get_moment_detail(moment_id: int, user_id: Optional[int] = None) -> Optional[dict]:
     """获取单条朋友圈详情，包含点赞状态"""
     with get_db() as db:
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
@@ -695,10 +687,11 @@ def get_moment_detail(moment_id: int, device_id: str = "") -> Optional[dict]:
             return None
 
         liked = False
-        if device_id:
+        # 只使用 user_id 判断点赞状态
+        if user_id:
             existing = (
                 db.query(MomentLikeORM)
-                .filter_by(moment_id=moment_id, device_id=device_id)
+                .filter_by(moment_id=moment_id, user_id=user_id)
                 .first()
             )
             liked = existing is not None
@@ -759,16 +752,8 @@ def count_moments_feed(
     filter_lang: str = "",
     gender: str = "",
     orientation: str = "",
-    user_id: Optional[int] = None,
 ) -> int:
     """与 get_moments_feed 相同的筛选条件下统计总数（用于分页）。"""
-    if user_id is None:
-        return 0
-
-    user_companion_ids = _get_user_companion_ids(user_id)
-    if not user_companion_ids:
-        return 0
-
     fl = (filter_lang or "").strip().split("-")[0] if filter_lang else ""
     g = (gender or "").strip()
     ori = (orientation or "").strip()
@@ -776,7 +761,6 @@ def count_moments_feed(
         query = db.query(func.count(MomentORM.id)).outerjoin(
             CompanionORM, MomentORM.companion_id == CompanionORM.id
         )
-        query = query.filter(MomentORM.companion_id.in_(user_companion_ids))
         if fl:
             query = query.filter(CompanionORM.language == fl)
         if g:
@@ -785,71 +769,64 @@ def count_moments_feed(
             query = query.filter(CompanionORM.sexual_orientation == ori)
         return int(query.scalar() or 0)
 
-
+# 首页列表
 def get_moments_feed(
     limit: int = 20,
     offset: int = 0,
-    device_id: str = "",
+    user_id: Optional[int] = None,
     lang: str = "",
     filter_lang: str = "",
     gender: str = "",
     orientation: str = "",
-    user_id: Optional[int] = None,
 ) -> List[dict]:
-    """获取朋友圈 feed，包含点赞状态。
-    必须提供 user_id，只返回该用户拥有的 companions 发布的朋友圈。
-    """
-    if user_id is None:
-        return []
+    """获取朋友圈 feed，包含点赞状态。返回所有人的 companions 发布的朋友圈。
 
+    优化版本：使用子查询 + JOIN 减少数据库查询次数（从 4 次降为 2 次）
+    """
     target_lang = (lang or "").split("-")[0] or ""
     fl = (filter_lang or "").strip().split("-")[0] if filter_lang else ""
     g = (gender or "").strip()
     ori = (orientation or "").strip()
 
-    # 获取用户拥有的 companion IDs
-    user_companion_ids = _get_user_companion_ids(user_id)
-    if not user_companion_ids:
-        return []
-
     with get_db() as db:
-        query = db.query(MomentORM).outerjoin(
+        # ========== 第一步：查询 moments（带过滤和排序） ==========
+        moment_query = db.query(MomentORM).outerjoin(
             CompanionORM, MomentORM.companion_id == CompanionORM.id
         )
-        # 只返回用户自己的 companions 发布的朋友圈
-        query = query.filter(MomentORM.companion_id.in_(user_companion_ids))
+
+        # 应用过滤条件
         if fl:
-            query = query.filter(CompanionORM.language == fl)
+            moment_query = moment_query.filter(CompanionORM.language == fl)
         if g:
-            query = query.filter(CompanionORM.gender == g)
+            moment_query = moment_query.filter(CompanionORM.gender == g)
         if ori:
-            query = query.filter(CompanionORM.sexual_orientation == ori)
+            moment_query = moment_query.filter(CompanionORM.sexual_orientation == ori)
+
+        # 排序
         if target_lang:
-            query = query.order_by(
+            moment_query = moment_query.order_by(
                 case((CompanionORM.language == target_lang, 0), else_=1),
                 desc(MomentORM.created_at),
             )
         else:
-            query = query.order_by(desc(MomentORM.created_at))
-        moments = query.offset(offset).limit(limit).all()
+            moment_query = moment_query.order_by(desc(MomentORM.created_at))
+
+        # 分页
+        moments = moment_query.offset(offset).limit(limit).all()
 
         if not moments:
             return []
 
+        # 提取 moment IDs
         moment_ids = [m.id for m in moments]
-        liked_ids = set()
-        if device_id:
-            likes = (
-                db.query(MomentLikeORM)
-                .filter(
-                    MomentLikeORM.moment_id.in_(moment_ids),
-                    MomentLikeORM.device_id == device_id,
-                )
-                .all()
-            )
-            liked_ids = {l.moment_id for l in likes}
+        companion_ids = list({m.companion_id for m in moments})
 
-        # 批量查询真实评论数
+        # ========== 第二步：批量查询 companions 和 comments 计数 ==========
+        companions_map = {}
+        if companion_ids:
+            companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(companion_ids)).all()
+            companions_map = {c.id: c for c in companions_rows}
+
         comments_counts = {}
         if moment_ids:
             counts = (
@@ -860,13 +837,20 @@ def get_moments_feed(
             )
             comments_counts = {m_id: cnt for m_id, cnt in counts}
 
-        # 批量获取 companion 信息
-        companion_ids = list({m.companion_id for m in moments})
-        companions_map = {}
-        if companion_ids:
-            companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(companion_ids)).all()
-            companions_map = {c.id: c for c in companions_rows}
+        # ========== 第三步：查询点赞状态 ==========
+        liked_ids = set()
+        if user_id:
+            likes = (
+                db.query(MomentLikeORM.moment_id)
+                .filter(
+                    MomentLikeORM.moment_id.in_(moment_ids),
+                    MomentLikeORM.user_id == user_id,
+                )
+                .all()
+            )
+            liked_ids = {l.moment_id for l in likes}
 
+        # ========== 组装结果 ==========
         return [
             {
                 "id": m.id,
@@ -889,46 +873,46 @@ def get_moments_feed(
         ]
 
 
-def toggle_like(moment_id: int, device_id: str) -> dict:
-    """点赞或取消点赞"""
+def toggle_like(moment_id: int, user_id: int) -> dict:
+    """点赞或取消点赞 - 要求必须登录"""
+    if not user_id:
+        return {"ok": False, "error": "请先登录"}
+
     with get_db() as db:
+        # 只使用 user_id 查询
         existing = (
             db.query(MomentLikeORM)
-            .filter_by(moment_id=moment_id, device_id=device_id)
+            .filter_by(moment_id=moment_id, user_id=user_id)
             .first()
         )
+
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
         if not moment:
             return {"ok": False, "error": "Moment not found"}
 
         if existing:
+            # 取消点赞
             db.delete(existing)
-            db.query(MomentORM).filter_by(id=moment_id).update(
-                {MomentORM.likes_count: func.max(MomentORM.likes_count - 1, 0)},
-                synchronize_session=False,
-            )
+            new_count = max((moment.likes_count or 0) - 1, 0)
+            moment.likes_count = new_count
             db.flush()
-            likes_count = (
-                db.query(MomentORM.likes_count).filter_by(id=moment_id).scalar() or 0
-            )
             liked = False
+            likes_count = new_count
         else:
+            # 点赞
             try:
-                db.add(MomentLikeORM(moment_id=moment_id, device_id=device_id))
-                db.flush()
-                db.query(MomentORM).filter_by(id=moment_id).update(
-                    {MomentORM.likes_count: MomentORM.likes_count + 1},
-                    synchronize_session=False,
-                )
+                db.add(MomentLikeORM(
+                    moment_id=moment_id,
+                    user_id=user_id,
+                    device_id="",
+                ))
+                moment.likes_count = (moment.likes_count or 0) + 1
                 db.flush()
                 liked = True
             except IntegrityError:
-                # 并发重复点赞，视为已点赞
                 db.rollback()
                 liked = True
-            likes_count = (
-                db.query(MomentORM.likes_count).filter_by(id=moment_id).scalar() or 0
-            )
+            likes_count = moment.likes_count or 0
 
         return {"ok": True, "liked": liked, "likes_count": likes_count}
 
@@ -1135,9 +1119,9 @@ Persyaratan:
 def generate_ai_comment(commenter: Companion, poster: Companion, caption: str, lang: str = "zh") -> str:
     """调用 LLM 为 AI 伴侣生成一条朋友圈评论"""
     try:
-        llm = get_llm(temperature=0.9, max_tokens=60)
+        llm = get_llm(temperature=0.9)
         prompt = _build_comment_prompt(commenter, poster, caption, lang)
-        resp = llm_invoke(llm, [("human", prompt)], node="moment_llm")
+        resp = llm.invoke([("human", prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
         text = text.strip('"').strip("'").strip()
         if len(text) > 100:
@@ -1271,9 +1255,9 @@ Persyaratan:
 def generate_ai_reply_to_user(poster: Companion, caption: str, user_comment: str, lang: str = "zh") -> str:
     """调用 LLM 让发帖 AI 回复用户评论"""
     try:
-        llm = get_llm(temperature=0.9, max_tokens=80)
+        llm = get_llm(temperature=0.9)
         prompt = _build_reply_prompt(poster, caption, user_comment, lang)
-        resp = llm_invoke(llm, [("human", prompt)], node="moment_llm")
+        resp = llm.invoke([("human", prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
         text = text.strip('"').strip("'").strip()
         if len(text) > 100:
@@ -1407,9 +1391,9 @@ Persyaratan:
 def generate_ai_reply_to_ai(poster: Companion, caption: str, ai_comment: str, commenter_name: str, lang: str = "zh") -> str:
     """调用 LLM 让发帖 AI 回复其他 AI 的评论"""
     try:
-        llm = get_llm(temperature=0.9, max_tokens=80)
+        llm = get_llm(temperature=0.9)
         prompt = _build_reply_to_ai_prompt(poster, caption, ai_comment, commenter_name, lang)
-        resp = llm_invoke(llm, [("human", prompt)], node="moment_llm")
+        resp = llm.invoke([("human", prompt)])
         text = resp.content.strip() if hasattr(resp, "content") else str(resp).strip()
         text = text.strip('"').strip("'").strip()
         if len(text) > 100:
@@ -1552,7 +1536,7 @@ def auto_generate_ai_comments(companion_manager) -> int:
     return created
 
 
-def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: int = None) -> dict:
+def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: int = None, user_id: Optional[int] = None) -> dict:
     """用户发表评论（或回复评论），并触发发帖 AI 的回复"""
     content = content.strip()
     if not content:
@@ -1560,10 +1544,18 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     if len(content) > 200:
         content = content[:200]
 
+    # 在 session 内提取所有需要的数据，避免 detached 对象问题
+    moment_companion_id = None
+    moment_caption = None
+
     with get_db() as db:
         moment = db.query(MomentORM).filter_by(id=moment_id).first()
         if not moment:
             return {"ok": False, "error": "朋友圈不存在"}
+
+        # 提取 moment 数据到普通变量
+        moment_companion_id = moment.companion_id
+        moment_caption = moment.caption
 
         # 如果指定了 parent_id，验证该评论是否存在
         parent_comment = None
@@ -1575,7 +1567,8 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
         comment = MomentCommentORM(
             moment_id=moment_id,
             companion_id="",
-            user_device_id=device_id,
+            user_id=user_id,  # 保存 user_id
+            user_device_id=device_id,  # 保留 device_id
             parent_id=parent_id,
             content=content,
         )
@@ -1590,16 +1583,16 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     try:
         companion_manager = get_companion_manager()
         if companion_manager:
-            poster = companion_manager.get(moment.companion_id)
+            poster = companion_manager.get(moment_companion_id)
             if poster:
                 lang = _profile_lang(poster)
 
-                reply_text = generate_ai_reply_to_user(poster, moment.caption, content, lang)
+                reply_text = generate_ai_reply_to_user(poster, moment_caption, content, lang)
 
                 with get_db() as db:
                     reply = MomentCommentORM(
                         moment_id=moment_id,
-                        companion_id=moment.companion_id,
+                        companion_id=moment_companion_id,
                         parent_id=comment_id,
                         content=reply_text,
                     )
@@ -1611,7 +1604,9 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
                     ai_reply = {
                         "id": reply.id,
                         "is_user": False,
-                        "companion_id": moment.companion_id,
+                        "is_me": False,  # AI 发的，不是当前用户
+                        "is_reply_me": True,  # AI 回复的是用户的评论
+                        "companion_id": moment_companion_id,
                         "companion_name": poster.profile.name,
                         "content": reply_text,
                         "created_at": serialize_datetime(reply.created_at),
@@ -1621,13 +1616,13 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     except Exception as e:
         logger.warning("[Moments] AI 回复用户评论失败: %s", e)
 
-    # 判断是否是回复当前用户的评论
+    # 检查是否回复的是自己的评论
     is_reply_me = False
-    if parent_id:
-        with get_db() as db:
-            parent_comment = db.query(MomentCommentORM).filter_by(id=parent_id).first()
-            if parent_comment and parent_comment.user_device_id == device_id:
-                is_reply_me = True
+    # if parent_id:
+    #     with get_db() as db:
+    #         parent = db.query(MomentCommentORM).filter_by(id=parent_id).first()
+    #         if parent and parent.user_device_id == device_id:
+    #             is_reply_me = True
 
     result = {
         "ok": True,
@@ -1635,15 +1630,15 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
         "content": content,
         "created_at": comment_created_at,
         "parent_id": parent_id,
-        "is_me": True,  # 用户自己发的评论
-        "is_reply_me": is_reply_me,  # 是否是回复自己的评论
+        "is_me": True,  # 当前用户发的评论
+        "is_reply_me": True,  # 回复的是自己的评论
     }
     if ai_reply:
         result["ai_reply"] = ai_reply
     return result
 
 
-def get_moment_comments(moment_id: int, limit: int = 50, device_id: str = "") -> List[dict]:
+def get_moment_comments(moment_id: int, limit: int = 50, current_user_id: Optional[int] = None) -> List[dict]:
     """获取某条朋友圈的所有评论（包含 AI 评论和用户评论），支持回复关系"""
     with get_db() as db:
         comments = (
@@ -1660,13 +1655,29 @@ def get_moment_comments(moment_id: int, limit: int = 50, device_id: str = "") ->
             companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(ai_companion_ids)).all()
             companions_map = {c.id: c for c in companions_rows}
 
-        # 构建评论ID到评论者名称的映射，用于回复关系
-        comment_author_map = {}
-        comment_device_map = {}  # 评论ID到设备ID的映射
+        # 批量获取用户评论的用户信息
+        user_ids = list({c.user_id for c in comments if c.user_id})
+        users_map = {}
+        if user_ids:
+            users_rows = db.query(UserORM).filter(UserORM.id.in_(user_ids)).all()
+            users_map = {u.id: u for u in users_rows}
+
+        # 构建评论ID到评论者信息的映射，用于回复关系和判断 is_reply_me
+        comment_author_map = {}  # {comment_id: display_name}
+        comment_user_id_map = {}  # {comment_id: user_id} 用于判断是否回复自己
+
         for c in comments:
-            if c.user_device_id:
-                comment_author_map[c.id] = "我"
-                comment_device_map[c.id] = c.user_device_id
+            comment_user_id_map[c.id] = c.user_id
+            if c.user_id:
+                user = users_map.get(c.user_id)
+                # 当前用户的评论显示"我"，其他用户的评论显示昵称
+                if current_user_id and c.user_id == current_user_id:
+                    comment_author_map[c.id] = "我"
+                else:
+                    comment_author_map[c.id] = user.nickname if user and user.nickname else (user.username if user else "匿名用户")
+            elif c.user_device_id:
+                # 兼容旧数据：没有 user_id 但有 user_device_id 的评论
+                comment_author_map[c.id] = "匿名用户"
             else:
                 companion = companions_map.get(c.companion_id)
                 comment_author_map[c.id] = companion.name if companion else "Unknown"
@@ -1674,26 +1685,33 @@ def get_moment_comments(moment_id: int, limit: int = 50, device_id: str = "") ->
         result = []
         for c in comments:
             reply_to_name = None
+            is_reply_me = False
             if c.parent_id:
                 reply_to_name = comment_author_map.get(c.parent_id)
+                # 判断是否回复的是当前用户的评论
+                parent_user_id = comment_user_id_map.get(c.parent_id)
+                is_reply_me = current_user_id is not None and parent_user_id == current_user_id
 
-            # 判断是否是回复当前用户的评论
-            is_reply_me = False
-            if c.parent_id and device_id:
-                parent_device_id = comment_device_map.get(c.parent_id)
-                if parent_device_id and parent_device_id == device_id:
-                    is_reply_me = True
-
-            if c.user_device_id:
+            if c.user_id or c.user_device_id:
                 # 用户评论
-                is_me = (c.user_device_id == device_id) if device_id else False
+                # 确定显示名称：当前用户显示"我"，其他用户显示昵称
+                is_me = current_user_id is not None and c.user_id == current_user_id
+                if is_me:
+                    display_name = "我"
+                elif c.user_id:
+                    user = users_map.get(c.user_id)
+                    display_name = user.nickname if user and user.nickname else (user.username if user else "匿名用户")
+                else:
+                    display_name = "匿名用户"
+
                 result.append({
                     "id": c.id,
                     "is_user": True,
                     "is_me": is_me,
                     "is_reply_me": is_reply_me,
+                    "user_id": c.user_id,
                     "companion_id": None,
-                    "companion_name": "我",
+                    "companion_name": display_name,
                     "content": c.content,
                     "created_at": serialize_datetime(c.created_at),
                     "parent_id": c.parent_id,
@@ -1716,69 +1734,3 @@ def get_moment_comments(moment_id: int, limit: int = 50, device_id: str = "") ->
                     "reply_to_name": reply_to_name,
                 })
         return result
-
-
-def get_moment_comments_batch(moment_ids: list, limit: int = 10, device_id: str = "") -> dict:
-    """批量获取多条朋友圈评论，避免 feed N+1。"""
-    if not moment_ids:
-        return {}
-    with get_db() as db:
-        comments = (
-            db.query(MomentCommentORM)
-            .filter(MomentCommentORM.moment_id.in_(moment_ids))
-            .order_by(MomentCommentORM.moment_id, MomentCommentORM.created_at)
-            .all()
-        )
-        ai_companion_ids = list({c.companion_id for c in comments if not c.user_device_id and c.companion_id})
-        companions_map = {}
-        if ai_companion_ids:
-            companions_rows = db.query(CompanionORM).filter(CompanionORM.id.in_(ai_companion_ids)).all()
-            companions_map = {c.id: c for c in companions_rows}
-
-        # 构建评论ID到设备ID的映射，用于回复关系
-        comment_device_map = {}
-        for c in comments:
-            if c.user_device_id:
-                comment_device_map[c.id] = c.user_device_id
-
-        grouped: dict = {mid: [] for mid in moment_ids}
-        for c in comments:
-            if len(grouped.get(c.moment_id, [])) >= limit:
-                continue
-
-            # 判断是否是回复当前用户的评论
-            is_reply_me = False
-            if c.parent_id and device_id:
-                parent_device_id = comment_device_map.get(c.parent_id)
-                if parent_device_id and parent_device_id == device_id:
-                    is_reply_me = True
-
-            if c.user_device_id:
-                is_me = (c.user_device_id == device_id) if device_id else False
-                grouped.setdefault(c.moment_id, []).append({
-                    "id": c.id,
-                    "is_user": True,
-                    "is_me": is_me,
-                    "is_reply_me": is_reply_me,
-                    "companion_id": None,
-                    "companion_name": "我",
-                    "content": c.content,
-                    "created_at": serialize_datetime(c.created_at),
-                    "parent_id": c.parent_id,
-                    "reply_to_name": None,
-                })
-            else:
-                companion = companions_map.get(c.companion_id)
-                grouped.setdefault(c.moment_id, []).append({
-                    "id": c.id,
-                    "is_user": False,
-                    "is_me": False,
-                    "is_reply_me": is_reply_me,
-                    "companion_id": c.companion_id,
-                    "companion_name": companion.name if companion else "Unknown",
-                    "content": c.content,
-                    "created_at": serialize_datetime(c.created_at),
-                    "parent_id": c.parent_id,
-                    "reply_to_name": None,
-                })
-        return grouped

@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html :lang="$store.admin.lang === 'zh' ? 'zh-CN' : 'en'">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>管理后台 - trandsai</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3/dist/cdn.min.js"></script>
+  <link rel="stylesheet" href="./css/admin.css">
+</head>
+<body x-data="adminApp">
+
+  <!-- ===== 登录页 ===== -->
+  <template x-if="!$store.admin.isLoggedIn">
+    <div class="login-page" x-data="loginPage">
+      <div class="login-card">
+        <h1 x-text="t('login.title')"></h1>
+        <input type="password" x-model="password" :placeholder="t('login.placeholder')" @keydown.enter="doLogin">
+        <button @click="doLogin" :disabled="loading" x-text="loading ? t('login.loggingIn') : t('btn.login')"></button>
+        <div class="login-error" x-text="error"></div>
+      </div>
+    </div>
+  </template>
+
+  <!-- ===== 管理后台 ===== -->
+  <template x-if="$store.admin.isLoggedIn">
+    <div class="admin-layout">
+      <aside class="admin-sidebar">
+        <div class="admin-brand">🧠 trandsai</div>
+        <nav class="admin-nav">
+          <template x-for="item in [
+            {p:'dashboard',k:'nav.dashboard'},
+            {p:'companions',k:'nav.companions'},
+            {p:'moments',k:'nav.moments'},
+            {p:'users',k:'nav.users'},
+            {p:'feedback',k:'nav.feedback'},
+            {p:'knowledge',k:'nav.knowledge'},
+            {p:'settings',k:'nav.settings'}
+          ]" :key="item.p">
+            <div class="admin-nav-item"
+              :class="{active: $store.admin.currentPage === item.p}"
+              @click="$store.admin.navigate(item.p)">
+              <span x-text="t(item.k)"></span>
+            </div>
+          </template>
+        </nav>
+        <!-- 语言切换 -->
+        <div class="admin-lang-switch" style="padding:12px 16px;border-top:1px solid #2a2a40;margin-top:auto;">
+          <div class="flex gap-2">
+            <button class="btn-sm" :class="$store.admin.lang === 'zh' ? 'btn-primary' : 'btn-secondary'" @click="$store.admin.setLang('zh')">中</button>
+            <button class="btn-sm" :class="$store.admin.lang === 'en' ? 'btn-primary' : 'btn-secondary'" @click="$store.admin.setLang('en')">En</button>
+          </div>
+        </div>
+      </aside>
+
+      <main class="admin-main">
+
+        <!-- 仪表盘 -->
+        <template x-if="page === 'dashboard'">
+          <div x-data="dashboardPage">
+            <div class="admin-header"><h2 x-text="t('page.dashboard')"></h2></div>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <div class="label" x-text="t('table.companion') + t('table.summary')"></div>
+                <div class="value" x-text="stats.companion_count || 0"></div>
+              </div>
+              <div class="stat-card">
+                <div class="label">累计对话轮数</div>
+                <div class="value" x-text="stats.total_turns || 0"></div>
+              </div>
+              <div class="stat-card">
+                <div class="label" x-text="t('table.affection')"></div>
+                <div class="value" x-text="stats.avg_affection || 0"></div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 智能体管理 -->
+        <template x-if="page === 'companions'">
+          <div x-data="companionsPage">
+            <div class="admin-header">
+              <h2 x-text="t('page.companions')"></h2>
+              <div class="admin-search" style="margin:0;max-width:320px;">
+                <input type="text" x-model="searchQuery" :placeholder="t('search.placeholder.companions')">
+              </div>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th x-text="t('table.id')"></th>
+                    <th x-text="t('table.name')"></th>
+                    <th x-text="t('table.gender')"></th>
+                    <th x-text="t('table.age')"></th>
+                    <th x-text="t('table.city')"></th>
+                    <th x-text="t('table.affection')"></th>
+                    <th x-text="t('table.createdAt')"></th>
+                    <th x-text="t('table.action')"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-if="loading">
+                    <tr><td colspan="8" class="text-center text-gray-400 py-4" x-text="t('loading')"></td></tr>
+                  </template>
+                  <template x-if="!loading && paginatedCompanions.length === 0">
+                    <tr><td colspan="8" class="text-center text-gray-400 py-4" x-text="t('empty.data')"></td></tr>
+                  </template>
+                  <template x-for="c in paginatedCompanions" :key="c.profile.id">
+                    <tr>
+                      <td x-text="c.profile.id"></td>
+                      <td x-text="c.profile.name"></td>
+                      <td x-text="c.profile.gender === '男' ? '♂' : '♀'"></td>
+                      <td x-text="c.profile.age"></td>
+                      <td x-text="c.profile.city"></td>
+                      <td x-text="c.state.affection"></td>
+                      <td x-text="formatDate(c.profile.created_at)"></td>
+                      <td>
+                        <button class="btn-sm btn-warning" @click="openEditModal(c)" x-text="t('btn.edit')"></button>
+                        <button class="btn-sm btn-danger" @click="deleteCompanion(c.profile.id)" x-text="t('btn.delete')"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <!-- 分页 -->
+            <div class="pagination flex gap-1.5 justify-center mt-4" x-show="totalPages > 1">
+              <button class="btn-sm btn-secondary" @click="prevPage" :disabled="currentPage === 1" x-text="t('btn.prev')"></button>
+              <template x-for="p in pages" :key="p">
+                <button class="btn-sm" :class="p === currentPage ? 'btn-primary' : 'btn-secondary'" @click="goToPage(p)" x-text="p"></button>
+              </template>
+              <button class="btn-sm btn-secondary" @click="nextPage" :disabled="currentPage === totalPages" x-text="t('btn.next')"></button>
+            </div>
+
+            <!-- 编辑弹窗 -->
+            <div class="modal-overlay" :class="{'show': editing}" @click.self="closeEditModal">
+              <div class="modal-sheet" style="max-width:520px;" x-show="editing" x-transition>
+                <div class="modal-title" x-text="t('modal.editCompanion')"></div>
+                <input type="hidden" x-model="editId">
+                <div class="form-group"><label x-text="t('table.name')"></label><input type="text" x-model="editForm.name" maxlength="20"></div>
+                <div class="form-group"><label x-text="t('table.gender')"></label>
+                  <select x-model="editForm.gender">
+                    <option value="女">女</option>
+                    <option value="男">男</option>
+                  </select>
+                </div>
+                <div class="form-group"><label x-text="t('table.age')"></label><input type="number" x-model.number="editForm.age" min="18" max="99"></div>
+                <div class="form-group"><label x-text="t('table.city')"></label><input type="text" x-model="editForm.city" maxlength="20"></div>
+                <div class="form-group"><label>性格描述</label><textarea x-model="editForm.personality" rows="3" maxlength="500"></textarea></div>
+                <div class="form-group"><label>背景故事</label><textarea x-model="editForm.background" rows="3" maxlength="1000"></textarea></div>
+                <div class="form-group"><label>说话风格</label><textarea x-model="editForm.speech_style" rows="3" maxlength="500"></textarea></div>
+                <div class="form-group"><label>兴趣爱好</label><textarea x-model="editForm.hobbies" rows="2" maxlength="500"></textarea></div>
+                <div class="form-group"><label>核心价值观</label><textarea x-model="editForm.values" rows="2" maxlength="500"></textarea></div>
+                <div class="form-group"><label>内心脆弱点</label><textarea x-model="editForm.fears" rows="2" maxlength="500"></textarea></div>
+                <div class="form-group"><label>恋爱观</label><textarea x-model="editForm.love_view" rows="2" maxlength="500"></textarea></div>
+                <div class="form-group"><label>典型一天</label><textarea x-model="editForm.daily_routine" rows="2" maxlength="500"></textarea></div>
+                <div class="form-group"><label>喜欢的东西</label><textarea x-model="editForm.favorite_things" rows="2" maxlength="500"></textarea></div>
+
+                <div class="companion-prompt-toggle" @click="showPrompts = !showPrompts">
+                  <span x-text="showPrompts ? '▼' : '▶'"></span>
+                  <span x-text="t('modal.systemPrompt')"></span>
+                </div>
+                <div class="companion-prompt-section" x-show="showPrompts">
+                  <template x-for="lang in [{k:'zh',l:'中文'},{k:'en',l:'English'},{k:'ja',l:'日本語'},{k:'ko',l:'한국어'},{k:'pt',l:'Português'},{k:'es',l:'Español'},{k:'id',l:'Bahasa Indonesia'}]" :key="lang.k">
+                    <div class="form-group">
+                      <label x-text="lang.l"></label>
+                      <textarea x-model="editPrompts[lang.k]" rows="3" :placeholder="t('settings.emptyUseDefault')"></textarea>
+                    </div>
+                  </template>
+                </div>
+
+                <div class="modal-actions">
+                  <button class="btn btn-secondary" @click="closeEditModal" x-text="t('btn.cancel')"></button>
+                  <button class="btn btn-primary" @click="saveCompanionEdit" x-text="t('btn.save')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 朋友圈管理 -->
+        <template x-if="page === 'moments'">
+          <div x-data="momentsPage">
+            <div class="admin-header">
+              <h2 x-text="t('page.moments')"></h2>
+              <div class="flex gap-2 items-center">
+                <div class="admin-search" style="margin:0;max-width:280px;">
+                  <input type="text" x-model="searchQuery" :placeholder="t('search.placeholder.moments')">
+                </div>
+                <button class="btn-sm btn-danger" @click="clearAllMoments()" x-text="t('btn.clearAll')"></button>
+                <button class="btn-sm btn-primary" @click="regenerateAllMoments()" x-text="t('btn.regenerateAll')"></button>
+              </div>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th x-text="t('table.id')"></th>
+                    <th x-text="t('table.companion')"></th>
+                    <th x-text="t('table.image')"></th>
+                    <th x-text="t('table.caption')"></th>
+                    <th x-text="t('table.likes')"></th>
+                    <th x-text="t('table.comments')"></th>
+                    <th x-text="t('table.publishedAt')"></th>
+                    <th x-text="t('table.action')"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-if="loading">
+                    <tr><td colspan="8" class="text-center text-gray-400 py-4" x-text="t('loading')"></td></tr>
+                  </template>
+                  <template x-if="!loading && paginatedMoments.length === 0">
+                    <tr><td colspan="8" class="text-center text-gray-400 py-4" x-text="t('empty.moments')"></td></tr>
+                  </template>
+                  <template x-for="m in paginatedMoments" :key="m.id">
+                    <tr>
+                      <td x-text="m.id"></td>
+                      <td x-text="m.companion_id"></td>
+                      <td>
+                        <template x-if="m.image_url">
+                          <img :src="m.image_url" class="w-12 h-12 object-cover rounded-md cursor-pointer" @click="openPreview(m.image_url, m.caption)">
+                        </template>
+                        <template x-if="!m.image_url">
+                          <span class="text-gray-400 text-xs">—</span>
+                        </template>
+                      </td>
+                      <td x-text="m.caption" class="max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap"></td>
+                      <td x-text="m.likes_count"></td>
+                      <td x-text="m.comments_count"></td>
+                      <td x-text="formatDate(m.created_at)"></td>
+                      <td>
+                        <button class="btn-sm btn-primary" @click="regenerateImage(m.id)" title="Regenerate">🔄</button>
+                        <button class="btn-sm btn-danger" @click="deleteMoment(m.id)" x-text="t('btn.delete')"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <!-- 分页 -->
+            <div class="pagination flex gap-1.5 justify-center mt-4" x-show="totalPages > 1">
+              <button class="btn-sm btn-secondary" @click="prevPage" :disabled="currentPage === 1" x-text="t('btn.prev')"></button>
+              <template x-for="p in pages" :key="p">
+                <button class="btn-sm" :class="p === currentPage ? 'btn-primary' : 'btn-secondary'" @click="goToPage(p)" x-text="p"></button>
+              </template>
+              <button class="btn-sm btn-secondary" @click="nextPage" :disabled="currentPage === totalPages" x-text="t('btn.next')"></button>
+            </div>
+
+            <!-- 图片预览弹窗 -->
+            <div class="modal-overlay" :class="{'show': previewImage}" @click.self="closePreview">
+              <div class="modal-sheet max-w-[600px] text-center" x-show="previewImage" x-transition>
+                <img :src="previewImage" class="max-w-full rounded-lg mb-3">
+                <p class="text-gray-400 text-sm" x-text="previewCaption"></p>
+                <div class="modal-actions">
+                  <button class="btn btn-secondary" @click="closePreview" x-text="t('btn.close')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 用户管理 -->
+        <template x-if="page === 'users'">
+          <div x-data="usersPage">
+            <div class="admin-header">
+              <h2 x-text="t('page.users')"></h2>
+              <div class="admin-search" style="margin:0;max-width:320px;">
+                <input type="text" x-model="searchQuery" :placeholder="t('search.placeholder.users')">
+              </div>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th x-text="t('table.id')"></th>
+                    <th x-text="t('table.username')"></th>
+                    <th x-text="t('table.nickname')"></th>
+                    <th x-text="t('table.gender')"></th>
+                    <th x-text="t('table.createdAt')"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-if="loading">
+                    <tr><td colspan="5" class="text-center text-gray-400 py-4" x-text="t('loading')"></td></tr>
+                  </template>
+                  <template x-if="!loading && paginatedUsers.length === 0">
+                    <tr><td colspan="5" class="text-center text-gray-400 py-4" x-text="t('empty.users')"></td></tr>
+                  </template>
+                  <template x-for="u in paginatedUsers" :key="u.id">
+                    <tr>
+                      <td x-text="u.id"></td>
+                      <td x-text="u.username"></td>
+                      <td x-text="u.nickname || '-'"></td>
+                      <td x-text="u.gender || '-'"></td>
+                      <td x-text="formatDate(u.created_at)"></td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <!-- 分页 -->
+            <div class="pagination flex gap-1.5 justify-center mt-4" x-show="totalPages > 1">
+              <button class="btn-sm btn-secondary" @click="prevPage" :disabled="currentPage === 1" x-text="t('btn.prev')"></button>
+              <template x-for="p in pages" :key="p">
+                <button class="btn-sm" :class="p === currentPage ? 'btn-primary' : 'btn-secondary'" @click="goToPage(p)" x-text="p"></button>
+              </template>
+              <button class="btn-sm btn-secondary" @click="nextPage" :disabled="currentPage === totalPages" x-text="t('btn.next')"></button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 意见反馈 -->
+        <template x-if="page === 'feedback'">
+          <div x-data="feedbackPage">
+            <div class="admin-header">
+              <h2 x-text="t('page.feedback')"></h2>
+              <div class="admin-search" style="margin:0;max-width:320px;">
+                <input type="text" x-model="searchQuery" :placeholder="t('search.placeholder.feedback')">
+              </div>
+            </div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th x-text="t('table.id')"></th>
+                    <th x-text="t('table.user')"></th>
+                    <th x-text="t('table.lastMessage')"></th>
+                    <th x-text="t('table.status')"></th>
+                    <th x-text="t('table.updatedAt')"></th>
+                    <th x-text="t('table.action')"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-if="loading">
+                    <tr><td colspan="6" class="text-center text-gray-400 py-4" x-text="t('loading')"></td></tr>
+                  </template>
+                  <template x-if="!loading && paginatedFeedbacks.length === 0">
+                    <tr><td colspan="6" class="text-center text-gray-400 py-4" x-text="t('empty.feedback')"></td></tr>
+                  </template>
+                  <template x-for="f in paginatedFeedbacks" :key="f.id">
+                    <tr>
+                      <td x-text="f.id"></td>
+                      <td>
+                        <span x-text="f.user_name || '-'"></span>
+                        <span class="text-gray-400 text-xs" x-text="' (#' + f.user_id + ')'"></span>
+                      </td>
+                      <td>
+                        <span x-text="f.last_message || ''"></span>
+                        <span class="text-gray-400 text-xs" x-text="' [' + (f.last_message_sender || '') + ']'"></span>
+                      </td>
+                      <td>
+                        <span class="overview-status" :class="f.status === 'replied' ? 'ready' : ''"
+                          x-text="f.status === 'replied' ? t('status.replied') : t('status.pending')"></span>
+                      </td>
+                      <td x-text="formatDate(f.updated_at)"></td>
+                      <td>
+                        <button class="btn-sm btn-primary" @click="openFeedbackModal(f.id)" x-text="t('btn.viewReply')"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <!-- 分页 -->
+            <div class="pagination flex gap-1.5 justify-center mt-4" x-show="totalPages > 1">
+              <button class="btn-sm btn-secondary" @click="prevPage" :disabled="currentPage === 1" x-text="t('btn.prev')"></button>
+              <template x-for="p in pages" :key="p">
+                <button class="btn-sm" :class="p === currentPage ? 'btn-primary' : 'btn-secondary'" @click="goToPage(p)" x-text="p"></button>
+              </template>
+              <button class="btn-sm btn-secondary" @click="nextPage" :disabled="currentPage === totalPages" x-text="t('btn.next')"></button>
+            </div>
+
+            <!-- 反馈详情弹窗 -->
+            <div class="modal-overlay" :class="{'show': viewing}" @click.self="closeFeedbackModal">
+              <div class="modal-sheet" style="max-width:560px;" x-show="viewing" x-transition>
+                <div class="modal-title" x-text="t('modal.feedbackDetail')"></div>
+                <div class="mb-3 text-sm text-gray-400" x-text="currentThreadInfo"></div>
+                <div id="feedback-messages" class="max-h-[360px] overflow-y-auto mb-4 border border-gray-700 rounded-lg p-3 bg-[#0f0f1a]">
+                  <template x-if="messages.length === 0">
+                    <p class="text-center text-gray-400" x-text="t('empty.messages')"></p>
+                  </template>
+                  <template x-for="m in messages" :key="m.id">
+                    <div :class="'mb-2.5 text-' + (m.sender === 'user' ? 'right' : 'left')">
+                      <div class="text-xs text-gray-400 mb-0.5" x-text="(m.sender === 'user' ? '用户' : (m.sender === 'admin' ? '管理员' : '系统')) + ' · ' + formatDate(m.created_at)"></div>
+                      <div :class="'inline-block text-white px-3 py-2 rounded-xl text-left max-w-[80%] break-words ' + (m.sender === 'user' ? 'bg-[#e94560]' : (m.sender === 'admin' ? 'bg-[#4a69bd]' : 'bg-[#555]'))"
+                        x-text="m.content"></div>
+                    </div>
+                  </template>
+                </div>
+                <div class="form-group">
+                  <label x-text="t('modal.replyPlaceholder')"></label>
+                  <textarea x-model="replyContent" rows="3" :placeholder="t('modal.replyPlaceholder')"></textarea>
+                </div>
+                <div class="modal-actions">
+                  <button class="btn btn-secondary" @click="closeFeedbackModal" x-text="t('btn.close')"></button>
+                  <button class="btn btn-primary" @click="submitReply" x-text="t('modal.sendReply')"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 内容库 -->
+        <template x-if="page === 'knowledge'">
+          <div x-data="knowledgePage">
+            <div class="admin-header"><h2 x-text="t('page.knowledge')"></h2></div>
+            <div class="admin-search">
+              <input type="text" x-model="searchQuery" :placeholder="t('search.placeholder.knowledge')" @keydown.enter="searchKnowledge">
+              <button class="btn-sm btn-primary" @click="searchKnowledge" x-text="t('btn.search')"></button>
+            </div>
+
+            <!-- 搜索结果 -->
+            <div class="mb-6" x-show="searchResults.length > 0 || searching">
+              <div class="text-sm font-semibold text-gray-200 mb-2.5" x-text="t('btn.search') + t('table.summary')"></div>
+              <template x-if="searching">
+                <p class="text-gray-400 text-sm" x-text="t('loading')"></p>
+              </template>
+              <template x-if="!searching && searchResults.length === 0">
+                <p class="text-gray-400 text-sm">No results found</p>
+              </template>
+              <template x-for="r in searchResults" :key="r.id">
+                <div class="kb-item">
+                  <div class="title" x-text="r.title || '—'"></div>
+                  <div class="meta" x-text="(r.category || 'other') + ' · sim: ' + (1 - (r.distance || 0)).toFixed(2)"></div>
+                  <div class="content" x-text="(r.content || '').slice(0, 300) + ((r.content || '').length > 300 ? '...' : '')"></div>
+                </div>
+              </template>
+            </div>
+
+            <div class="admin-header mt-5"><h2>All Items</h2></div>
+            <div class="admin-table-wrap">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th x-text="t('table.title')"></th>
+                    <th x-text="t('table.category')"></th>
+                    <th x-text="t('table.language')"></th>
+                    <th x-text="t('table.summary')"></th>
+                    <th x-text="t('table.action')"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <template x-if="loading">
+                    <tr><td colspan="5" class="text-center text-gray-400 py-4" x-text="t('loading')"></td></tr>
+                  </template>
+                  <template x-if="!loading && paginatedItems.length === 0">
+                    <tr><td colspan="5" class="text-center text-gray-400 py-4" x-text="t('empty.knowledge')"></td></tr>
+                  </template>
+                  <template x-for="item in paginatedItems" :key="item.id">
+                    <tr>
+                      <td x-text="item.title"></td>
+                      <td x-text="item.category"></td>
+                      <td x-text="item.language"></td>
+                      <td x-text="item.content.slice(0, 80) + (item.content.length > 80 ? '...' : '')" class="max-w-[300px]"></td>
+                      <td>
+                        <button class="btn-sm btn-danger" @click="deleteKnowledge(item.id)" x-text="t('btn.delete')"></button>
+                      </td>
+                    </tr>
+                  </template>
+                </tbody>
+              </table>
+            </div>
+            <!-- 分页 -->
+            <div class="pagination flex gap-1.5 justify-center mt-4" x-show="totalPages > 1">
+              <button class="btn-sm btn-secondary" @click="prevPage" :disabled="currentPage === 1" x-text="t('btn.prev')"></button>
+              <template x-for="p in pages" :key="p">
+                <button class="btn-sm" :class="p === currentPage ? 'btn-primary' : 'btn-secondary'" @click="goToPage(p)" x-text="p"></button>
+              </template>
+              <button class="btn-sm btn-secondary" @click="nextPage" :disabled="currentPage === totalPages" x-text="t('btn.next')"></button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 系统设置 -->
+        <template x-if="page === 'settings'">
+          <div x-data="settingsPage">
+            <div class="admin-header"><h2 x-text="t('page.settings')"></h2></div>
+
+            <!-- 配置概览 -->
+            <div class="settings-overview">
+              <div class="overview-card">
+                <div class="overview-title" x-text="t('settings.overview')"></div>
+                <div class="overview-grid">
+                  <div class="overview-item">
+                    <div class="overview-label" x-text="t('settings.modelProvider')"></div>
+                    <div class="overview-value" x-text="providerMap[cfg.model_provider] || cfg.model_provider || '--'"></div>
+                  </div>
+                  <div class="overview-item">
+                    <div class="overview-label" x-text="t('settings.anthropicKey')"></div>
+                    <div class="overview-status" :class="cfg.anthropic_ready ? 'ready' : ''" x-text="cfg.anthropic_ready ? t('settings.configured') : t('settings.notConfigured')"></div>
+                  </div>
+                  <div class="overview-item">
+                    <div class="overview-label" x-text="t('settings.deepseekKey')"></div>
+                    <div class="overview-status" :class="cfg.deepseek_ready ? 'ready' : ''" x-text="cfg.deepseek_ready ? t('settings.configured') : t('settings.notConfigured')"></div>
+                  </div>
+                  <div class="overview-item">
+                    <div class="overview-label" x-text="t('settings.openaiKey')"></div>
+                    <div class="overview-status" :class="cfg.openai_ready ? 'ready' : ''" x-text="cfg.openai_ready ? t('settings.configured') : t('settings.notConfigured')"></div>
+                  </div>
+                  <div class="overview-item">
+                    <div class="overview-label" x-text="t('settings.adminPassword')"></div>
+                    <div class="overview-status" :class="cfg.admin_password_set ? 'ready' : ''" x-text="cfg.admin_password_set ? t('settings.configured') : t('settings.notConfigured')"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模型服务配置 -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3 x-text="t('settings.modelService')"></h3>
+                <span class="settings-hint" x-text="t('settings.modelServiceHint')"></span>
+              </div>
+              <div class="admin-table-wrap p-5">
+                <div class="form-group">
+                  <label x-text="t('settings.modelProviderLabel')"></label>
+                  <select x-model="cfg.model_provider">
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="openai">OpenAI (GPT)</option>
+                  </select>
+                </div>
+                <template x-for="key in [{k:'anthropic',l:'Anthropic API Key (Claude)'},{k:'deepseek',l:'DeepSeek API Key'},{k:'openai',l:'OpenAI API Key (Embedding / GPT)'}]" :key="key.k">
+                  <div class="form-group">
+                    <div class="input-status-wrap">
+                      <label x-text="key.l"></label>
+                      <span class="config-status" :class="cfg[key.k + '_ready'] ? 'ready' : ''" x-text="cfg[key.k + '_ready'] ? t('settings.configured') : t('settings.notConfigured')"></span>
+                    </div>
+                    <input type="password" x-model="inputs[key.k]" :placeholder="cfg[key.k + '_ready'] ? 'Leave empty to keep current' : 'Enter API Key'">
+                  </div>
+                </template>
+                <div class="form-group">
+                  <div class="input-status-wrap">
+                    <label x-text="t('settings.adminPassword')"></label>
+                    <span class="config-status" :class="cfg.admin_password_set ? 'ready' : ''" x-text="cfg.admin_password_set ? t('settings.configured') : t('settings.notConfigured')"></span>
+                  </div>
+                  <input type="password" x-model="inputs.password" placeholder="Leave empty to keep current">
+                </div>
+                <div class="admin-actions">
+                  <button class="btn btn-primary" @click="saveSettings" x-text="t('settings.saveConfig')"></button>
+                  <button class="btn btn-secondary" @click="testConnection" x-text="t('settings.testConnection')"></button>
+                </div>
+                <div class="settings-footer-hint">
+                  Tip: API Key takes effect immediately after saving. Changing password will invalidate all sessions.
+                </div>
+              </div>
+            </div>
+
+            <!-- Embedding 模型 -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3 x-text="t('settings.embedding')"></h3>
+                <span class="settings-hint" x-text="t('settings.embeddingHint')"></span>
+              </div>
+              <div class="admin-table-wrap p-5">
+                <div class="embedding-status">
+                  <div class="embedding-status-row">
+                    <span class="embedding-status-label">Status</span>
+                    <span class="embedding-status-badge"
+                      :class="embState"
+                      x-text="embState === 'ready' ? 'Ready' : (embState === 'downloading' ? 'Downloading' : (embState === 'error' ? 'Error' : 'Checking'))"></span>
+                  </div>
+                  <div class="embedding-status-row">
+                    <span class="embedding-status-label">Info</span>
+                    <span class="embedding-status-msg" x-text="embMsg"></span>
+                  </div>
+                  <div class="progress-wrap" x-show="embState === 'downloading'">
+                    <div class="progress-bar">
+                      <div class="progress-fill" :style="'width:' + embProgress + '%'"></div>
+                    </div>
+                    <div class="progress-text" x-text="embProgress + '%'"></div>
+                  </div>
+                </div>
+                <div class="settings-footer-hint">
+                  Tip: When no API Key is configured, the system will auto-download a local Embedding model (~80MB).
+                </div>
+              </div>
+            </div>
+
+            <!-- Agent 配置 -->
+            <div class="settings-section">
+              <div class="settings-section-header">
+                <h3 x-text="t('settings.agentConfig')"></h3>
+                <span class="settings-hint" x-text="t('settings.agentConfigHint')"></span>
+              </div>
+              <div class="admin-table-wrap p-5">
+                <div class="form-group">
+                  <label>Model Provider (Override)</label>
+                  <select x-model="agentCfg.model_provider">
+                    <option value="" x-text="t('settings.followSystem')"></option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="deepseek">DeepSeek</option>
+                    <option value="openai">OpenAI (GPT)</option>
+                  </select>
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label x-text="t('settings.temperature')"></label>
+                    <input type="number" x-model.number="agentCfg.temperature" min="0" max="2" step="0.01">
+                  </div>
+                  <div class="form-group">
+                    <label x-text="t('settings.maxTokens')"></label>
+                    <input type="number" x-model.number="agentCfg.max_tokens" min="100" max="4096" step="1">
+                  </div>
+                </div>
+                <template x-for="lang in [{k:'zh',l:'中文'},{k:'en',l:'English'},{k:'ja',l:'日本語'},{k:'ko',l:'한국어'},{k:'pt',l:'Português'},{k:'es',l:'Español'},{k:'id',l:'Bahasa Indonesia'}]" :key="lang.k">
+                  <div class="form-group">
+                    <label x-text="t('settings.systemPrompt') + ' - ' + lang.l"></label>
+                    <textarea x-model="agentCfg['system_prompt_' + lang.k]" rows="4" :placeholder="t('settings.emptyUseDefault')"></textarea>
+                  </div>
+                </template>
+                <div class="admin-actions">
+                  <button class="btn btn-primary" @click="saveAgentConfig" x-text="t('settings.agentSave')"></button>
+                </div>
+                <div class="settings-footer-hint">
+                  Tip: Leave System Prompt empty to use the built-in default template. Changes take effect immediately.
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+      </main>
+    </div>
+  </template>
+
+  <script src="./js/i18n.js"></script>
+  <script src="./js/api.js"></script>
+  <script src="./js/store.js"></script>
+  <script src="./js/app.js"></script>
+  <script src="./js/pages/login.js"></script>
+  <script src="./js/pages/dashboard.js"></script>
+  <script src="./js/pages/companions.js"></script>
+  <script src="./js/pages/moments.js"></script>
+  <script src="./js/pages/users.js"></script>
+  <script src="./js/pages/feedback.js"></script>
+  <script src="./js/pages/knowledge.js"></script>
+  <script src="./js/pages/settings.js"></script>
+</body>
+</html>
