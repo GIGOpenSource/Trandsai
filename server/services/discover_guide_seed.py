@@ -94,7 +94,6 @@ def seed_discover_guide_posts_if_needed(db: Session) -> int:
             PostORM(
                 user_id=None,
                 user_name=GUIDE_AUTHOR_NAME,
-                avatar="",
                 title=title,
                 content=article["content"].strip(),
                 images=[],

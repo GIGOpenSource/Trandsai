@@ -745,6 +745,9 @@ async def api_list_companions(
                   - "affectionate": 返回亲密度 > 5 的智能体/
                   - "mine": 返回自己创建的智能体
                   - "mine_chatted": 返回自己创建的 + 有对话的智能体
+                  只要两个参数”
+                  - "is_create"： 返回自己创建的（机器人创建者id 等于token自身的），不传则所有的
+                  - "affecte_score"： 返回大于等于 该亲密度(默认有聊天就有亲密度 因此也代表有过聊天的 )
           """
     return get_companion_manager().list_all_for_any(filter_type=filter_type, user_id=user_id)
 
