@@ -1604,6 +1604,8 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
                     ai_reply = {
                         "id": reply.id,
                         "is_user": False,
+                        "is_me": False,  # AI 发的，不是当前用户
+                        "is_reply_me": True,  # AI 回复的是用户的评论
                         "companion_id": moment_companion_id,
                         "companion_name": poster.profile.name,
                         "content": reply_text,
@@ -1614,12 +1616,22 @@ def add_user_comment(moment_id: int, device_id: str, content: str, parent_id: in
     except Exception as e:
         logger.warning("[Moments] AI 回复用户评论失败: %s", e)
 
+    # 检查是否回复的是自己的评论
+    is_reply_me = False
+    # if parent_id:
+    #     with get_db() as db:
+    #         parent = db.query(MomentCommentORM).filter_by(id=parent_id).first()
+    #         if parent and parent.user_device_id == device_id:
+    #             is_reply_me = True
+
     result = {
         "ok": True,
         "id": comment_id,
         "content": content,
         "created_at": comment_created_at,
         "parent_id": parent_id,
+        "is_me": True,  # 当前用户发的评论
+        "is_reply_me": True,  # 回复的是自己的评论
     }
     if ai_reply:
         result["ai_reply"] = ai_reply
@@ -1650,9 +1662,12 @@ def get_moment_comments(moment_id: int, limit: int = 50, current_user_id: Option
             users_rows = db.query(UserORM).filter(UserORM.id.in_(user_ids)).all()
             users_map = {u.id: u for u in users_rows}
 
-        # 构建评论ID到评论者名称的映射，用于回复关系
-        comment_author_map = {}
+        # 构建评论ID到评论者信息的映射，用于回复关系和判断 is_reply_me
+        comment_author_map = {}  # {comment_id: display_name}
+        comment_user_id_map = {}  # {comment_id: user_id} 用于判断是否回复自己
+
         for c in comments:
+            comment_user_id_map[c.id] = c.user_id
             if c.user_id:
                 user = users_map.get(c.user_id)
                 # 当前用户的评论显示"我"，其他用户的评论显示昵称
@@ -1670,13 +1685,18 @@ def get_moment_comments(moment_id: int, limit: int = 50, current_user_id: Option
         result = []
         for c in comments:
             reply_to_name = None
+            is_reply_me = False
             if c.parent_id:
                 reply_to_name = comment_author_map.get(c.parent_id)
+                # 判断是否回复的是当前用户的评论
+                parent_user_id = comment_user_id_map.get(c.parent_id)
+                is_reply_me = current_user_id is not None and parent_user_id == current_user_id
 
             if c.user_id or c.user_device_id:
                 # 用户评论
                 # 确定显示名称：当前用户显示"我"，其他用户显示昵称
-                if current_user_id and c.user_id == current_user_id:
+                is_me = current_user_id is not None and c.user_id == current_user_id
+                if is_me:
                     display_name = "我"
                 elif c.user_id:
                     user = users_map.get(c.user_id)
@@ -1687,6 +1707,8 @@ def get_moment_comments(moment_id: int, limit: int = 50, current_user_id: Option
                 result.append({
                     "id": c.id,
                     "is_user": True,
+                    "is_me": is_me,
+                    "is_reply_me": is_reply_me,
                     "user_id": c.user_id,
                     "companion_id": None,
                     "companion_name": display_name,
@@ -1702,6 +1724,8 @@ def get_moment_comments(moment_id: int, limit: int = 50, current_user_id: Option
                 result.append({
                     "id": c.id,
                     "is_user": False,
+                    "is_me": False,
+                    "is_reply_me": is_reply_me,
                     "companion_id": c.companion_id,
                     "companion_name": companion_name,
                     "content": c.content,
