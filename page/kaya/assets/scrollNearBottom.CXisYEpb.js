@@ -1,0 +1,1 @@
+import{n as r}from"./index-CPwMBbjS.js";function t(t,e=0,i=180){var n;if(!t)return!1;const o=Number(t.scrollTop)||0,u=Number(t.scrollHeight)||0;if(u<=0)return!1;let l=Number(t.clientHeight)||Number(e)||0;if(!l)try{l=Math.max(400,((null==(n=r())?void 0:n.windowHeight)||600)-140)}catch{l=600}return o+l>=u-i}export{t as i};

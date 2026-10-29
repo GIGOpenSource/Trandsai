@@ -1,0 +1,1412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TrandsAI · AI Companion Product</title>
+  <meta name="description" content="TrandsAI is a complete AI companion product built for continuity, intimacy progression, memory depth, and real-time presence." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #14110f;
+      --ink-soft: #2a2420;
+      --paper: #f3ece4;
+      --mist: #e2d7cc;
+      --warm: #c45c3e;
+      --warm-deep: #9a3f28;
+      --jade: #2f6b5a;
+      --steel: #607079;
+      --line: rgba(20, 17, 15, 0.12);
+      --line-strong: rgba(20, 17, 15, 0.2);
+      --white: #fffaf6;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: "Outfit", "PingFang TC", "Noto Sans TC", "Hiragino Sans", "Malgun Gothic", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+      line-height: 1.6;
+      overflow-x: hidden;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, select { font: inherit; }
+    a { color: inherit; text-decoration: none; }
+
+    .grain {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      opacity: 0.04;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .nav {
+      position: absolute;
+      inset: 0 0 auto 0;
+      z-index: 20;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      padding: 1.25rem 5vw;
+      color: var(--white);
+    }
+
+    .nav-brand {
+      font-family: "Instrument Serif", serif;
+      font-size: 1.5rem;
+      letter-spacing: 0.02em;
+    }
+
+    .nav-right {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 1.4rem;
+      font-size: 0.8rem;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
+
+    .lang-select {
+      appearance: none;
+      background: rgba(255, 250, 246, 0.08);
+      color: var(--white);
+      border: 1px solid rgba(255, 250, 246, 0.28);
+      padding: 0.6rem 0.9rem;
+      min-width: 128px;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+    }
+
+    .lang-select option {
+      color: var(--ink);
+      background: var(--white);
+    }
+
+    .hero {
+      position: relative;
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: grid;
+      align-items: end;
+      color: var(--white);
+      overflow: hidden;
+    }
+
+    .hero-bg {
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(160deg, rgba(20, 17, 15, 0.18) 0%, rgba(20, 17, 15, 0.7) 54%, rgba(20, 17, 15, 0.92) 100%),
+        radial-gradient(ellipse 80% 60% at 70% 20%, rgba(196, 92, 62, 0.34), transparent 55%),
+        radial-gradient(ellipse 60% 50% at 15% 80%, rgba(47, 107, 90, 0.38), transparent 50%),
+        linear-gradient(125deg, #1a1614 0%, #2c221c 40%, #1e2a28 100%);
+      animation: hueDrift 18s var(--ease) infinite alternate;
+    }
+
+    .hero-bg::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 250, 246, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 250, 246, 0.03) 1px, transparent 1px);
+      background-size: 64px 64px;
+      mask-image: linear-gradient(to bottom, black 0%, transparent 75%);
+    }
+
+    .hero-orb {
+      position: absolute;
+      right: -4%;
+      top: 10%;
+      width: min(52vw, 520px);
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 35%, rgba(255,255,255,0.18), transparent 45%),
+        radial-gradient(circle at 60% 60%, rgba(196,92,62,0.45), transparent 65%),
+        radial-gradient(circle at 40% 70%, rgba(47,107,90,0.48), #1a1614 75%);
+      filter: blur(2px);
+      animation: orbFloat 10s var(--ease) infinite alternate;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 960px;
+      padding: 0 5vw 12vh;
+    }
+
+    .hero-brand {
+      font-family: "Instrument Serif", serif;
+      font-size: clamp(3.4rem, 9vw, 6.8rem);
+      line-height: 0.94;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.35rem;
+      opacity: 0;
+      animation: riseIn 1s var(--ease) 0.15s forwards;
+    }
+
+    .hero-title {
+      font-size: clamp(1.38rem, 3vw, 2rem);
+      font-weight: 500;
+      max-width: 18em;
+      margin-bottom: 0.95rem;
+      opacity: 0;
+      animation: riseIn 1s var(--ease) 0.35s forwards;
+    }
+
+    .hero-sub {
+      max-width: 34em;
+      font-size: clamp(0.96rem, 1.55vw, 1.1rem);
+      font-weight: 300;
+      color: rgba(255, 250, 246, 0.8);
+      margin-bottom: 2rem;
+      opacity: 0;
+      animation: riseIn 1s var(--ease) 0.55s forwards;
+    }
+
+    .hero-ctas {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1rem;
+      opacity: 0;
+      animation: riseIn 1s var(--ease) 0.7s forwards;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.88rem 1.5rem;
+      font-size: 0.88rem;
+      font-weight: 560;
+      letter-spacing: 0.03em;
+      border: 1px solid transparent;
+      transition: transform 0.35s var(--ease), background 0.35s, color 0.35s, border-color 0.35s;
+    }
+
+    .btn:hover { transform: translateY(-2px); }
+    .btn-primary { background: var(--warm); color: var(--white); }
+    .btn-primary:hover { background: var(--warm-deep); }
+    .btn-ghost {
+      background: transparent;
+      border-color: rgba(255,250,246,0.42);
+      color: var(--white);
+    }
+    .btn-ghost:hover {
+      background: rgba(255,250,246,0.06);
+      border-color: var(--white);
+    }
+
+    .site-wrap {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .site-chip {
+      cursor: default;
+      user-select: none;
+    }
+
+    .qr-pop {
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 14px);
+      transform: translateX(-50%) translateY(8px);
+      width: 168px;
+      padding: 0.7rem;
+      background: rgba(20, 17, 15, 0.94);
+      border: 1px solid rgba(255,250,246,0.12);
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: opacity 0.28s var(--ease), transform 0.28s var(--ease), visibility 0.28s;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.28);
+    }
+
+    .qr-pop img {
+      display: block;
+      width: 100%;
+      height: auto;
+      background: var(--white);
+    }
+
+    .qr-pop p {
+      margin-top: 0.6rem;
+      color: rgba(255,250,246,0.72);
+      font-size: 0.72rem;
+      line-height: 1.45;
+      text-align: center;
+    }
+
+    .site-wrap:hover .qr-pop,
+    .site-wrap:focus-within .qr-pop {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    .tech-strip {
+      background: var(--ink);
+      color: var(--paper);
+      padding: 1.7rem 5vw;
+      border-top: 1px solid rgba(242,235,227,0.08);
+      border-bottom: 1px solid rgba(242,235,227,0.08);
+    }
+
+    .tech-marquee {
+      overflow: hidden;
+      mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+    }
+
+    .tech-track {
+      display: flex;
+      gap: 2.4rem;
+      width: max-content;
+      animation: marquee 32s linear infinite;
+      font-size: 0.78rem;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(242,235,227,0.72);
+      white-space: nowrap;
+    }
+
+    .tech-track span::before {
+      content: "·";
+      margin-right: 2.4rem;
+      color: var(--warm);
+    }
+    .tech-track span:first-child::before { content: none; margin: 0; }
+
+    section { padding: 6.3rem 5vw; }
+    .section-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--warm);
+      margin-bottom: 0.85rem;
+    }
+    .section-title {
+      font-family: "Instrument Serif", serif;
+      font-size: clamp(2rem, 4.5vw, 3.2rem);
+      line-height: 1.14;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+      max-width: 16em;
+    }
+    .section-lead {
+      font-size: 1.04rem;
+      color: var(--ink-soft);
+      max-width: 39em;
+      font-weight: 300;
+      margin-bottom: 3rem;
+    }
+
+    .compare { background: linear-gradient(180deg, var(--paper) 0%, var(--mist) 100%); }
+    .compare-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      min-width: 720px;
+    }
+    .compare-table th, .compare-table td {
+      text-align: left;
+      vertical-align: top;
+      padding: 1.15rem 1rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .compare-table thead th {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--steel);
+    }
+    .compare-table thead th:last-child { color: var(--warm); }
+    .compare-table tbody th { width: 18%; font-weight: 560; }
+    .compare-table td:nth-child(2) { width: 38%; color: var(--steel); }
+    .compare-table td:last-child { width: 44%; font-weight: 500; }
+
+    .pillars { background: var(--white); }
+    .pillar-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid var(--line-strong);
+    }
+    .pillar {
+      padding: 2.2rem 1.7rem 2.5rem 0;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      opacity: 0;
+      transform: translateY(18px);
+      transition: opacity 0.7s var(--ease), transform 0.7s var(--ease);
+    }
+    .pillar:nth-child(3n) { border-right: none; padding-right: 0; }
+    .pillar:nth-child(n+4) { border-bottom: none; }
+    .pillar.is-in { opacity: 1; transform: translateY(0); }
+    .pillar-num {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.74rem;
+      color: var(--warm);
+      margin-bottom: 0.95rem;
+    }
+    .pillar h3 {
+      font-family: "Instrument Serif", serif;
+      font-size: 1.54rem;
+      font-weight: 400;
+      margin-bottom: 0.7rem;
+    }
+    .pillar p {
+      font-size: 0.92rem;
+      font-weight: 300;
+      color: var(--ink-soft);
+    }
+    .pillar .tag {
+      display: inline-block;
+      margin-top: 1rem;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.68rem;
+      color: var(--jade);
+    }
+
+    .arch {
+      background:
+        radial-gradient(ellipse 70% 50% at 100% 0%, rgba(47,107,90,0.12), transparent 55%),
+        var(--paper);
+    }
+    .arch-flow {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background: var(--line-strong);
+    }
+    .arch-step {
+      background: var(--white);
+      padding: 1.7rem 1.4rem;
+      min-height: 182px;
+    }
+    .arch-step .mono {
+      display: block;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.7rem;
+      color: var(--warm);
+      margin-bottom: 0.65rem;
+    }
+    .arch-step h3 {
+      font-size: 1.05rem;
+      font-weight: 560;
+      margin-bottom: 0.55rem;
+    }
+    .arch-step p {
+      font-size: 0.85rem;
+      font-weight: 300;
+      color: var(--steel);
+    }
+
+    .stack {
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .stack .section-label { color: #e08a6e; }
+    .stack .section-lead { color: rgba(242,235,227,0.65); }
+    .stack-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 3rem;
+    }
+    .stack h3 {
+      font-family: "Instrument Serif", serif;
+      font-size: 1.6rem;
+      font-weight: 400;
+      margin-bottom: 1.2rem;
+    }
+    .stack-list { list-style: none; }
+    .stack-list li {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 1rem;
+      padding: 0.85rem 0;
+      border-bottom: 1px solid rgba(242,235,227,0.1);
+      font-size: 0.92rem;
+    }
+    .stack-list li span:first-child {
+      font-family: "JetBrains Mono", monospace;
+      font-size: 0.72rem;
+      color: #e08a6e;
+      letter-spacing: 0.04em;
+      padding-top: 0.2rem;
+    }
+    .stack-list li span:last-child {
+      color: rgba(242,235,227,0.82);
+      font-weight: 300;
+    }
+
+    .close {
+      position: relative;
+      background: linear-gradient(165deg, #1e1814 0%, #243530 55%, #1a1614 100%);
+      color: var(--white);
+      padding: 8rem 5vw;
+      overflow: hidden;
+    }
+    .close::before {
+      content: "";
+      position: absolute;
+      right: -80px;
+      bottom: -120px;
+      width: 420px;
+      aspect-ratio: 1;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(196,92,62,0.35), transparent 70%);
+      animation: orbFloat 12s var(--ease) infinite alternate-reverse;
+    }
+    .close-inner {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+    }
+    .close h2 {
+      font-family: "Instrument Serif", serif;
+      font-size: clamp(2.2rem, 5vw, 3.6rem);
+      line-height: 1.12;
+      margin-bottom: 1.2rem;
+    }
+    .close p {
+      font-size: 1.05rem;
+      font-weight: 300;
+      color: rgba(255,250,246,0.78);
+      max-width: 33em;
+      margin-bottom: 2rem;
+    }
+
+    footer {
+      background: var(--ink);
+      color: rgba(242,235,227,0.48);
+      padding: 1.45rem 5vw 2rem;
+      font-size: 0.78rem;
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      border-top: 1px solid rgba(242,235,227,0.08);
+    }
+
+    .footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem 1.25rem;
+      align-items: center;
+    }
+
+    .footer-links a {
+      color: rgba(242,235,227,0.72);
+    }
+
+    .footer-links a:hover {
+      color: var(--paper);
+    }
+
+    @keyframes riseIn {
+      from { opacity: 0; transform: translateY(28px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes hueDrift {
+      from { filter: hue-rotate(0deg) saturate(1); }
+      to { filter: hue-rotate(8deg) saturate(1.08); }
+    }
+    @keyframes orbFloat {
+      from { transform: translate(0, 0) scale(1); }
+      to { transform: translate(-3%, 4%) scale(1.04); }
+    }
+    @keyframes marquee {
+      from { transform: translateX(0); }
+      to { transform: translateX(-50%); }
+    }
+
+    @media (max-width: 920px) {
+      .pillar-grid { grid-template-columns: 1fr; }
+      .pillar {
+        border-right: none;
+        padding-right: 0;
+      }
+      .pillar:nth-child(n+4) { border-bottom: 1px solid var(--line); }
+      .pillar:last-child { border-bottom: none; }
+      .arch-flow { grid-template-columns: 1fr 1fr; }
+      .stack-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+    }
+
+    @media (max-width: 760px) {
+      .nav {
+        align-items: flex-start;
+      }
+      .nav-right {
+        flex-direction: column;
+        align-items: flex-end;
+      }
+      .nav-links { display: none; }
+      .arch-flow { grid-template-columns: 1fr; }
+      .stack-list li { grid-template-columns: 1fr; gap: 0.25rem; }
+      .qr-pop {
+        left: auto;
+        right: 0;
+        transform: translateY(8px);
+      }
+      .site-wrap:hover .qr-pop,
+      .site-wrap:focus-within .qr-pop {
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+
+  <header class="hero">
+    <div class="hero-bg" aria-hidden="true"></div>
+    <div class="hero-orb" aria-hidden="true"></div>
+
+    <nav class="nav">
+      <div class="nav-brand">TrandsAI</div>
+      <div class="nav-right">
+        <div class="nav-links">
+          <a href="#compare" data-i18n="navCompare">Compare</a>
+          <a href="#pillars" data-i18n="navCapabilities">Capabilities</a>
+          <a href="#arch" data-i18n="navArchitecture">Architecture</a>
+          <a href="#stack" data-i18n="navStack">Stack</a>
+          <a href="terms-of-service.html" data-i18n="footerTerms">Terms of Service</a>
+          <a href="privacy-policy.html" data-i18n="footerPrivacy">Privacy Policy</a>
+        </div>
+        <label>
+          <select id="langSelect" class="lang-select" aria-label="Language selector">
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="zh-Hant">繁體中文</option>
+            <option value="es">Español</option>
+            <option value="pt">Português</option>
+          </select>
+        </label>
+      </div>
+    </nav>
+
+    <div class="hero-content">
+      <h1 class="hero-brand">TrandsAI</h1>
+      <p class="hero-title" data-i18n="heroTitle">A complete AI companion product built for relationships that continue.</p>
+      <p class="hero-sub" data-i18n="heroSub">Not another generic chatbot. TrandsAI turns memory depth, intimacy progression, dialogue discipline, and social presence into a full companion experience users can stay with.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#compare" data-i18n="ctaCompare">See the difference</a>
+        <a class="btn btn-ghost" href="#arch" data-i18n="ctaArchitecture">Explore the architecture</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="tech-strip" aria-hidden="true">
+    <div class="tech-marquee">
+      <div class="tech-track">
+        <span>FastAPI</span><span>LangGraph</span><span>WebSocket IM</span><span>Redis Chat Bridge</span>
+        <span>Chroma Memory</span><span>Relation Card</span><span>Dialogue Hard Gates</span><span>AI Moments</span>
+        <span>uni-app · Vue 3</span><span>7 Languages</span>
+        <span>FastAPI</span><span>LangGraph</span><span>WebSocket IM</span><span>Redis Chat Bridge</span>
+        <span>Chroma Memory</span><span>Relation Card</span><span>Dialogue Hard Gates</span><span>AI Moments</span>
+        <span>uni-app · Vue 3</span><span>7 Languages</span>
+      </div>
+    </div>
+  </div>
+
+  <section class="compare" id="compare">
+    <p class="section-label" data-i18n="compareLabel">Versus Market</p>
+    <h2 class="section-title" data-i18n="compareTitle">Most products optimize for answers. TrandsAI is built as a complete AI companion product.</h2>
+    <p class="section-lead" data-i18n="compareLead">General assistants maximize task completion. Companion products need continuity, emotional rhythm, identity, and persistent presence. TrandsAI is designed around that full product reality, not a one-window chat demo.</p>
+
+    <div class="compare-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr>
+            <th data-i18n="tableAxis">Axis</th>
+            <th data-i18n="tableTypical">Typical AI chat / roleplay products</th>
+            <th>TrandsAI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th data-i18n="axisGoal">Product goal</th>
+            <td data-i18n="axisGoalTypical">Answers, short-session engagement, disposable chat delight</td>
+            <td data-i18n="axisGoalTrands">A complete companion product with continuity, presence, and relationship progression</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisMemory">Memory</th>
+            <td data-i18n="axisMemoryTypical">Session window or shallow summarization, easy continuity loss</td>
+            <td data-i18n="axisMemoryTrands">Layered short-term, episodic, factual, and relation-summary memory with prompt injection</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisEmotion">Emotional pacing</th>
+            <td data-i18n="axisEmotionTypical">One-size-fits-all tone with limited stage awareness</td>
+            <td data-i18n="axisEmotionTrands">Affinity signals, stage progression, flirt control, and leave-respect gates</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisQuality">Dialogue quality</th>
+            <td data-i18n="axisQualityTypical">Mostly prompt-driven, weak against repetition or drift</td>
+            <td data-i18n="axisQualityTrands">Diagnose → deny window → theme cooldown → forced rewrite quality chain</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisPresence">Presence</th>
+            <td data-i18n="axisPresenceTypical">User-initiated only</td>
+            <td data-i18n="axisPresenceTrands">Proactive messages plus AI Moments, comments, and social-life behavior</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisSurface">Product surface</th>
+            <td data-i18n="axisSurfaceTypical">Single chat box</td>
+            <td data-i18n="axisSurfaceTrands">Chat, discovery, moments, companion creation, and intimacy-oriented progression</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisLatency">Latency experience</th>
+            <td data-i18n="axisLatencyTypical">Artificial typing delay or blocking persistence</td>
+            <td data-i18n="axisLatencyTrands">WebSocket delivery, Redis hot path, async archive and persistence off the critical path</td>
+          </tr>
+          <tr>
+            <th data-i18n="axisGlobal">Global readiness</th>
+            <td data-i18n="axisGlobalTypical">Limited localization and weak cultural texture</td>
+            <td data-i18n="axisGlobalTrands">Multi-language support plus culturally seeded names, cities, and localized companion activity</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="pillars" id="pillars">
+    <p class="section-label" data-i18n="pillarsLabel">Core Capabilities</p>
+    <h2 class="section-title" data-i18n="pillarsTitle">Six technical choices that change how the product feels</h2>
+    <p class="section-lead" data-i18n="pillarsLead">Each claim maps back to product behavior across the existing backend and frontend, not generic marketing language.</p>
+
+    <div class="pillar-grid">
+      <article class="pillar">
+        <div class="pillar-num">01</div>
+        <h3 data-i18n="pillar1Title">Instant-message responsiveness</h3>
+        <p data-i18n="pillar1Body">WebSocket sessions, connection LRU, offline outbox, and Redis chat bridging keep the hot path fast and avoid fake waiting theatrics.</p>
+        <span class="tag">ws/chat · chat_cache · chat store</span>
+      </article>
+      <article class="pillar">
+        <div class="pillar-num">02</div>
+        <h3 data-i18n="pillar2Title">Companions remember you</h3>
+        <p data-i18n="pillar2Body">Short-term, episodic, factual, and relation-summary memory work together so continuity survives across sessions.</p>
+        <span class="tag">memory · relation_card · Chroma</span>
+      </article>
+      <article class="pillar">
+        <div class="pillar-num">03</div>
+        <h3 data-i18n="pillar3Title">Character immersion with structure</h3>
+        <p data-i18n="pillar3Body">MBTI, speech style, life story, values, and romantic worldview form a usable persona stack instead of a decorative profile.</p>
+        <span class="tag">CompanionProfile · persona_evolve</span>
+      </article>
+      <article class="pillar">
+        <div class="pillar-num">04</div>
+        <h3 data-i18n="pillar4Title">Relationships that evolve</h3>
+        <p data-i18n="pillar4Body">Affinity, intimacy stages, motive modeling, and must-answer routing keep emotional movement aligned with user intent.</p>
+        <span class="tag">dialogue_phase2 · motive_layer</span>
+      </article>
+      <article class="pillar">
+        <div class="pillar-num">05</div>
+        <h3 data-i18n="pillar5Title">Presence beyond the chat window</h3>
+        <p data-i18n="pillar5Body">Proactive nudges, AI Moments, AI-to-AI comments, and image generation make companions feel socially alive when the user is away.</p>
+        <span class="tag">proactive · moments · image_gen</span>
+      </article>
+      <article class="pillar">
+        <div class="pillar-num">06</div>
+        <h3 data-i18n="pillar6Title">Dialogue quality you can inspect</h3>
+        <p data-i18n="pillar6Body">Repeat suppression, leave-respect logic, and evaluation probes turn conversational quality into something measurable.</p>
+        <span class="tag">dialogue_quality · eval_probes</span>
+      </article>
+    </div>
+  </section>
+
+  <section class="arch" id="arch">
+    <p class="section-label" data-i18n="archLabel">Runtime Path</p>
+    <h2 class="section-title" data-i18n="archTitle">From message ingress to relationship depth</h2>
+    <p class="section-lead" data-i18n="archLead">Short greetings can short-circuit; heavier turns route through preparation, intent, response, and quality control, while archive work stays off the first-response path.</p>
+
+    <div class="arch-flow">
+      <div class="arch-step">
+        <span class="mono">01 · INGEST</span>
+        <h3 data-i18n="arch1Title">Realtime intake</h3>
+        <p data-i18n="arch1Body">Client messages enter through WebSocket and hit Redis before asynchronous persistence handles the durable layer.</p>
+      </div>
+      <div class="arch-step">
+        <span class="mono">02 · ROUTE</span>
+        <h3 data-i18n="arch2Title">Light / heavy routing</h3>
+        <p data-i18n="arch2Body">LangGraph path selection lets low-complexity turns move quickly while emotional or long-form cases go deeper.</p>
+      </div>
+      <div class="arch-step">
+        <span class="mono">03 · RESPOND</span>
+        <h3 data-i18n="arch3Title">Pipeline v2 response flow</h3>
+        <p data-i18n="arch3Body">Preparation, must-answer logic, response generation, and rewrite checks keep the reply useful without flattening personality.</p>
+      </div>
+      <div class="arch-step">
+        <span class="mono">04 · ARCHIVE</span>
+        <h3 data-i18n="arch4Title">Background relationship build-up</h3>
+        <p data-i18n="arch4Body">Facts, summaries, relation-card updates, and persona evolution are archived asynchronously so continuity deepens over time.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stack" id="stack">
+    <p class="section-label">Stack</p>
+    <h2 class="section-title" style="color: var(--paper);" data-i18n="stackTitle">Integrated frontend and backend for a production companion product</h2>
+    <p class="section-lead" data-i18n="stackLead">Agent pools, per-user turn locking, async workers, local caches, and multi-surface UX make this a product system, not a thin interface over a model.</p>
+
+    <div class="stack-grid">
+      <div>
+        <h3>Backend</h3>
+        <ul class="stack-list">
+          <li><span>API</span><span data-i18n="stackApi">FastAPI, Uvicorn, and Starlette WebSocket</span></li>
+          <li><span>Agent</span><span data-i18n="stackAgent">LangGraph / LangChain with tiered LLM roles for respond, inner, and archive</span></li>
+          <li><span>Data</span><span data-i18n="stackData">PostgreSQL, Redis, and ChromaDB for persistence, chat hot path, and memory retrieval</span></li>
+          <li><span>Workers</span><span data-i18n="stackWorkers">Agent queue, archive workers, and chat flush workers</span></li>
+          <li><span>Media</span><span data-i18n="stackMedia">Avatar and Moments image generation plus object storage</span></li>
+        </ul>
+      </div>
+      <div>
+        <h3>Frontend</h3>
+        <ul class="stack-list">
+          <li><span>App</span><span data-i18n="stackApp">uni-app, Vue 3, Pinia, and vue-i18n</span></li>
+          <li><span>Chat</span><span data-i18n="stackChat">Virtualized long threads, emoji input, date separators, and typing-state behavior</span></li>
+          <li><span>Social</span><span data-i18n="stackSocial">Moments feed, companion discovery, and creation flows</span></li>
+          <li><span>Perf</span><span data-i18n="stackPerf">Message, companion, and home caching with staggered reconnect handling</span></li>
+          <li><span>Locale</span><span data-i18n="stackLocale">Multi-language UI aligned with companion language support</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="close">
+    <div class="close-inner">
+      <p class="section-label" data-i18n="closeLabel">Positioning</p>
+      <h2 data-i18n="closeTitle">From “can chat” to “worth staying with”</h2>
+      <p data-i18n="closeBody">TrandsAI combines relation cards, intimacy stages, motive modeling, quality gates, realtime delivery, and social surfaces into a complete AI companion product with technical depth users can feel.</p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="#compare" data-i18n="closeCta">Back to compare</a>
+        <div class="site-wrap">
+          <span class="btn btn-ghost site-chip" tabindex="0">test-trandsai.site</span>
+          <div class="qr-pop" role="tooltip" aria-label="Website QR code">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=https%3A%2F%2Fwww.test-trandsai.site" alt="QR code for test-trandsai.site" />
+            <p data-i18n="qrHint">Hover to scan</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span data-i18n="footerLeft">TrandsAI · Complete AI Companion Product</span>
+    <div class="footer-links">
+      <a href="terms-of-service.html" data-i18n="footerTerms">Terms of Service</a>
+      <a href="privacy-policy.html" data-i18n="footerPrivacy">Privacy Policy</a>
+      <span data-i18n="footerRight">from TrandsAI</span>
+    </div>
+  </footer>
+
+  <script>
+    (function () {
+      var translations = {
+        "en": {
+          pageTitle: "TrandsAI · AI Companion Product",
+          pageDescription: "TrandsAI is a complete AI companion product built for continuity, intimacy progression, memory depth, and real-time presence.",
+          navCompare: "Compare",
+          navCapabilities: "Capabilities",
+          navArchitecture: "Architecture",
+          navStack: "Stack",
+          heroTitle: "A complete AI companion product built for relationships that continue.",
+          heroSub: "Not another generic chatbot. TrandsAI turns memory depth, intimacy progression, dialogue discipline, and social presence into a full companion experience users can stay with.",
+          ctaCompare: "See the difference",
+          ctaArchitecture: "Explore the architecture",
+          compareLabel: "Versus Market",
+          compareTitle: "Most products optimize for answers. TrandsAI is built as a complete AI companion product.",
+          compareLead: "General assistants maximize task completion. Companion products need continuity, emotional rhythm, identity, and persistent presence. TrandsAI is designed around that full product reality, not a one-window chat demo.",
+          tableAxis: "Axis",
+          tableTypical: "Typical AI chat / roleplay products",
+          axisGoal: "Product goal",
+          axisGoalTypical: "Answers, short-session engagement, disposable chat delight",
+          axisGoalTrands: "A complete companion product with continuity, presence, and relationship progression",
+          axisMemory: "Memory",
+          axisMemoryTypical: "Session window or shallow summarization, easy continuity loss",
+          axisMemoryTrands: "Layered short-term, episodic, factual, and relation-summary memory with prompt injection",
+          axisEmotion: "Emotional pacing",
+          axisEmotionTypical: "One-size-fits-all tone with limited stage awareness",
+          axisEmotionTrands: "Affinity signals, stage progression, flirt control, and leave-respect gates",
+          axisQuality: "Dialogue quality",
+          axisQualityTypical: "Mostly prompt-driven, weak against repetition or drift",
+          axisQualityTrands: "Diagnose → deny window → theme cooldown → forced rewrite quality chain",
+          axisPresence: "Presence",
+          axisPresenceTypical: "User-initiated only",
+          axisPresenceTrands: "Proactive messages plus AI Moments, comments, and social-life behavior",
+          axisSurface: "Product surface",
+          axisSurfaceTypical: "Single chat box",
+          axisSurfaceTrands: "Chat, discovery, moments, companion creation, and intimacy-oriented progression",
+          axisLatency: "Latency experience",
+          axisLatencyTypical: "Artificial typing delay or blocking persistence",
+          axisLatencyTrands: "WebSocket delivery, Redis hot path, async archive and persistence off the critical path",
+          axisGlobal: "Global readiness",
+          axisGlobalTypical: "Limited localization and weak cultural texture",
+          axisGlobalTrands: "Multi-language support plus culturally seeded names, cities, and localized companion activity",
+          pillarsLabel: "Core Capabilities",
+          pillarsTitle: "Six technical choices that change how the product feels",
+          pillarsLead: "Each claim maps back to product behavior across the existing backend and frontend, not generic marketing language.",
+          pillar1Title: "Instant-message responsiveness",
+          pillar1Body: "WebSocket sessions, connection LRU, offline outbox, and Redis chat bridging keep the hot path fast and avoid fake waiting theatrics.",
+          pillar2Title: "Companions remember you",
+          pillar2Body: "Short-term, episodic, factual, and relation-summary memory work together so continuity survives across sessions.",
+          pillar3Title: "Character immersion with structure",
+          pillar3Body: "MBTI, speech style, life story, values, and romantic worldview form a usable persona stack instead of a decorative profile.",
+          pillar4Title: "Relationships that evolve",
+          pillar4Body: "Affinity, intimacy stages, motive modeling, and must-answer routing keep emotional movement aligned with user intent.",
+          pillar5Title: "Presence beyond the chat window",
+          pillar5Body: "Proactive nudges, AI Moments, AI-to-AI comments, and image generation make companions feel socially alive when the user is away.",
+          pillar6Title: "Dialogue quality you can inspect",
+          pillar6Body: "Repeat suppression, leave-respect logic, and evaluation probes turn conversational quality into something measurable.",
+          archLabel: "Runtime Path",
+          archTitle: "From message ingress to relationship depth",
+          archLead: "Short greetings can short-circuit; heavier turns route through preparation, intent, response, and quality control, while archive work stays off the first-response path.",
+          arch1Title: "Realtime intake",
+          arch1Body: "Client messages enter through WebSocket and hit Redis before asynchronous persistence handles the durable layer.",
+          arch2Title: "Light / heavy routing",
+          arch2Body: "LangGraph path selection lets low-complexity turns move quickly while emotional or long-form cases go deeper.",
+          arch3Title: "Pipeline v2 response flow",
+          arch3Body: "Preparation, must-answer logic, response generation, and rewrite checks keep the reply useful without flattening personality.",
+          arch4Title: "Background relationship build-up",
+          arch4Body: "Facts, summaries, relation-card updates, and persona evolution are archived asynchronously so continuity deepens over time.",
+          stackTitle: "Integrated frontend and backend for a production companion product",
+          stackLead: "Agent pools, per-user turn locking, async workers, local caches, and multi-surface UX make this a product system, not a thin interface over a model.",
+          stackApi: "FastAPI, Uvicorn, and Starlette WebSocket",
+          stackAgent: "LangGraph / LangChain with tiered LLM roles for respond, inner, and archive",
+          stackData: "PostgreSQL, Redis, and ChromaDB for persistence, chat hot path, and memory retrieval",
+          stackWorkers: "Agent queue, archive workers, and chat flush workers",
+          stackMedia: "Avatar and Moments image generation plus object storage",
+          stackApp: "uni-app, Vue 3, Pinia, and vue-i18n",
+          stackChat: "Virtualized long threads, emoji input, date separators, and typing-state behavior",
+          stackSocial: "Moments feed, companion discovery, and creation flows",
+          stackPerf: "Message, companion, and home caching with staggered reconnect handling",
+          stackLocale: "Multi-language UI aligned with companion language support",
+          closeLabel: "Positioning",
+          closeTitle: "From “can chat” to “worth staying with”",
+          closeBody: "TrandsAI combines relation cards, intimacy stages, motive modeling, quality gates, realtime delivery, and social surfaces into a complete AI companion product with technical depth users can feel.",
+          closeCta: "Back to compare",
+          qrHint: "Hover to scan",
+          footerLeft: "TrandsAI · Complete AI Companion Product",
+          footerTerms: "Terms of Service",
+          footerPrivacy: "Privacy Policy",
+          footerRight: "from TrandsAI"
+        },
+        "ja": {
+          pageTitle: "TrandsAI · AIコンパニオン製品",
+          pageDescription: "TrandsAI は、継続性、親密度の進行、記憶の深さ、リアルタイムな存在感のために設計された完全な AI コンパニオン製品です。",
+          navCompare: "比較",
+          navCapabilities: "能力",
+          navArchitecture: "構成",
+          navStack: "技術",
+          heroTitle: "関係が続くことを前提に設計された、完全な AI コンパニオン製品。",
+          heroSub: "ありふれたチャットボットではありません。TrandsAI は、記憶の深さ、親密度の進行、対話規律、社会的な存在感を、長く使い続けられるコンパニオン体験へと統合します。",
+          ctaCompare: "違いを見る",
+          ctaArchitecture: "構成を見る",
+          compareLabel: "市場比較",
+          compareTitle: "多くの製品は「回答」を最適化する。TrandsAI は完全な AI コンパニオン製品として作られている。",
+          compareLead: "汎用アシスタントはタスク達成を最大化します。コンパニオン製品には継続性、感情のリズム、人格、持続する存在感が必要です。TrandsAI は単一のチャット画面ではなく、その製品全体を前提に設計されています。",
+          tableAxis: "軸",
+          tableTypical: "一般的な AI チャット / ロールプレイ製品",
+          axisGoal: "製品目標",
+          axisGoalTypical: "回答、短時間のエンゲージメント、一過性の会話体験",
+          axisGoalTrands: "継続性、存在感、関係進行を備えた完全なコンパニオン製品",
+          axisMemory: "記憶",
+          axisMemoryTypical: "セッション内か浅い要約で、継続性が切れやすい",
+          axisMemoryTrands: "短期・エピソード・事実・関係要約の多層記憶をプロンプトに注入",
+          axisEmotion: "感情の進行",
+          axisEmotionTypical: "一律な口調で段階認識が弱い",
+          axisEmotionTrands: "好感度、段階進行、フラート制御、離脱尊重ゲート",
+          axisQuality: "対話品質",
+          axisQualityTypical: "主にプロンプト依存で、反復や脱線に弱い",
+          axisQualityTrands: "診断 → 拒否ウィンドウ → テーマ冷却 → 強制リライトの品質チェーン",
+          axisPresence: "存在感",
+          axisPresenceTypical: "ユーザー発話待ち",
+          axisPresenceTrands: "主动メッセージ、AI Moments、コメント、社会的ふるまい",
+          axisSurface: "製品面",
+          axisSurfaceTypical: "単一のチャットボックス",
+          axisSurfaceTrands: "チャット、発見、モーメンツ、作成、親密度進行",
+          axisLatency: "レイテンシ体験",
+          axisLatencyTypical: "人工的なタイピング遅延や同期保存",
+          axisLatencyTrands: "WebSocket 配信、Redis ホットパス、非同期アーカイブと保存",
+          axisGlobal: "グローバル対応",
+          axisGlobalTypical: "ローカライズが限定的で文化的質感が弱い",
+          axisGlobalTrands: "多言語対応に加え、文化に根ざした名前・都市・活動シード",
+          pillarsLabel: "主要能力",
+          pillarsTitle: "製品体験を変える6つの技術選択",
+          pillarsLead: "すべての主張は、既存のフロントエンドとバックエンド上の実際の挙動に対応しています。",
+          pillar1Title: "メッセンジャー級の応答性",
+          pillar1Body: "WebSocket、接続 LRU、オフライン送信箱、Redis ブリッジにより、ホットパスを速く保ちます。",
+          pillar2Title: "コンパニオンはあなたを覚えている",
+          pillar2Body: "短期・エピソード・事実・関係要約の記憶が連携し、会話をまたいで継続性を保ちます。",
+          pillar3Title: "構造化されたキャラクター没入",
+          pillar3Body: "MBTI、話し方、人生背景、価値観、恋愛観が、飾りではない人格スタックを形成します。",
+          pillar4Title: "育つ関係性",
+          pillar4Body: "好感度、親密度段階、動機モデル、must-answer ルーティングが感情の進行を整えます。",
+          pillar5Title: "チャット外でも続く存在感",
+          pillar5Body: "主动ナッジ、AI Moments、AI 同士のコメント、画像生成で、離れていても生きた存在感を作ります。",
+          pillar6Title: "検査できる対話品質",
+          pillar6Body: "反復抑制、離脱尊重ロジック、評価プローブにより、会話品質を測定可能にします。",
+          archLabel: "実行経路",
+          archTitle: "メッセージ入力から関係の深さへ",
+          archLead: "短い挨拶は短絡可能で、重いターンは準備・意図・応答・品質制御を通り、アーカイブは初回応答経路から外れます。",
+          arch1Title: "リアルタイム受信",
+          arch1Body: "クライアントのメッセージは WebSocket で入り、耐久層は非同期保存が担当します。",
+          arch2Title: "軽 / 重ルーティング",
+          arch2Body: "LangGraph により、軽いターンは素早く、感情的または長文のケースは深く処理されます。",
+          arch3Title: "Pipeline v2 応答フロー",
+          arch3Body: "準備、must-answer 判定、応答生成、リライト確認で、有用性と人格の両立を保ちます。",
+          arch4Title: "バックグラウンドで関係を蓄積",
+          arch4Body: "事実、要約、関係カード更新、人格進化は非同期で蓄積され、継続性が厚みを持ちます。",
+          stackTitle: "本番運用を前提にした統合フロントエンド / バックエンド",
+          stackLead: "Agent プール、ユーザー単位のターンロック、非同期ワーカー、ローカルキャッシュ、多面 UX により、モデルの薄いラッパーではなく製品システムになっています。",
+          stackApi: "FastAPI、Uvicorn、Starlette WebSocket",
+          stackAgent: "応答・内省・アーカイブの役割を分けた LangGraph / LangChain",
+          stackData: "永続化、チャット高速経路、記憶検索のための PostgreSQL、Redis、ChromaDB",
+          stackWorkers: "Agent キュー、アーカイブワーカー、チャットフラッシュワーカー",
+          stackMedia: "アバター / Moments 画像生成とオブジェクトストレージ",
+          stackApp: "uni-app、Vue 3、Pinia、vue-i18n",
+          stackChat: "仮想化された長い会話、絵文字入力、日付区切り、タイピング状態",
+          stackSocial: "Moments フィード、コンパニオン発見、作成フロー",
+          stackPerf: "メッセージ、コンパニオン、ホームのキャッシュと段階的再接続",
+          stackLocale: "コンパニオンの言語対応と連動した多言語 UI",
+          closeLabel: "ポジショニング",
+          closeTitle: "「話せる」から「一緒にいたくなる」へ",
+          closeBody: "TrandsAI は、関係カード、親密度段階、動機モデル、品質ゲート、リアルタイム配信、ソーシャル面を結合し、技術の深さを体感できる完全な AI コンパニオン製品に仕上げています。",
+          closeCta: "比較へ戻る",
+          qrHint: "ホバーして読み取る",
+          footerLeft: "TrandsAI · 完全な AI コンパニオン製品",
+          footerTerms: "利用規約",
+          footerPrivacy: "プライバシーポリシー",
+          footerRight: "from TrandsAI"
+        },
+        "ko": {
+          pageTitle: "TrandsAI · AI 컴패니언 제품",
+          pageDescription: "TrandsAI는 지속성, 친밀도 진전, 깊은 메모리, 실시간 존재감을 위해 설계된 완전한 AI 컴패니언 제품입니다.",
+          navCompare: "비교",
+          navCapabilities: "역량",
+          navArchitecture: "아키텍처",
+          navStack: "스택",
+          heroTitle: "관계가 이어지는 것을 전제로 설계된 완전한 AI 컴패니언 제품.",
+          heroSub: "평범한 챗봇이 아닙니다. TrandsAI는 메모리 깊이, 친밀도 진전, 대화 규율, 사회적 존재감을 오래 머물 수 있는 컴패니언 경험으로 만듭니다.",
+          ctaCompare: "차이 보기",
+          ctaArchitecture: "아키텍처 보기",
+          compareLabel: "시장 비교",
+          compareTitle: "대부분의 제품은 답변을 최적화한다. TrandsAI는 완전한 AI 컴패니언 제품으로 설계되었다.",
+          compareLead: "범용 어시스턴트는 작업 완료율을 높입니다. 컴패니언 제품은 연속성, 감정 리듬, 정체성, 지속적 존재감이 필요합니다. TrandsAI는 단일 채팅 창이 아니라 제품 전체를 기준으로 설계되었습니다.",
+          tableAxis: "축",
+          tableTypical: "일반적인 AI 채팅 / 롤플레이 제품",
+          axisGoal: "제품 목표",
+          axisGoalTypical: "답변, 짧은 세션 몰입, 일회성 채팅 만족감",
+          axisGoalTrands: "연속성, 존재감, 관계 진전을 갖춘 완전한 컴패니언 제품",
+          axisMemory: "메모리",
+          axisMemoryTypical: "세션 창이나 얕은 요약에 의존해 연속성이 쉽게 끊김",
+          axisMemoryTrands: "단기·에피소드·사실·관계 요약 메모리를 프롬프트에 주입",
+          axisEmotion: "감정 진행",
+          axisEmotionTypical: "단일 톤 중심, 단계 인식 부족",
+          axisEmotionTrands: "호감 신호, 단계 진전, 플러트 제어, 이탈 존중 게이트",
+          axisQuality: "대화 품질",
+          axisQualityTypical: "대부분 프롬프트 의존, 반복과 이탈에 취약",
+          axisQualityTrands: "진단 → 거부 윈도우 → 테마 쿨다운 → 강제 재작성 체인",
+          axisPresence: "존재감",
+          axisPresenceTypical: "사용자 발화 대기",
+          axisPresenceTrands: "프로액티브 메시지와 AI Moments, 댓글, 사회적 행동",
+          axisSurface: "제품 표면",
+          axisSurfaceTypical: "단일 채팅 박스",
+          axisSurfaceTrands: "채팅, 발견, 모먼츠, 컴패니언 생성, 친밀도 진행",
+          axisLatency: "지연 경험",
+          axisLatencyTypical: "인위적 타이핑 지연 또는 블로킹 저장",
+          axisLatencyTrands: "WebSocket 전달, Redis 핫패스, 비동기 아카이브/저장",
+          axisGlobal: "글로벌 준비",
+          axisGlobalTypical: "제한된 현지화와 약한 문화적 질감",
+          axisGlobalTrands: "다국어 지원과 문화 기반 이름·도시·활동 시드",
+          pillarsLabel: "핵심 역량",
+          pillarsTitle: "제품 체감을 바꾸는 여섯 가지 기술 선택",
+          pillarsLead: "모든 문구는 실제 프런트엔드와 백엔드 동작에 근거합니다.",
+          pillar1Title: "메신저급 반응성",
+          pillar1Body: "WebSocket, 연결 LRU, 오프라인 아웃박스, Redis 브리징으로 핫패스를 빠르게 유지합니다.",
+          pillar2Title: "컴패니언은 당신을 기억한다",
+          pillar2Body: "단기·에피소드·사실·관계 요약 메모리가 함께 작동해 세션을 넘어 연속성을 유지합니다.",
+          pillar3Title: "구조화된 캐릭터 몰입",
+          pillar3Body: "MBTI, 말투, 인생사, 가치관, 연애관이 장식이 아닌 인격 스택을 만듭니다.",
+          pillar4Title: "자라나는 관계",
+          pillar4Body: "호감도, 친밀도 단계, 동기 모델링, must-answer 라우팅이 감정 흐름을 정렬합니다.",
+          pillar5Title: "채팅 밖에서도 이어지는 존재감",
+          pillar5Body: "프로액티브 알림, AI Moments, AI 간 댓글, 이미지 생성으로 사용자가 없을 때도 살아 있는 느낌을 만듭니다.",
+          pillar6Title: "검사 가능한 대화 품질",
+          pillar6Body: "반복 억제, 이탈 존중 로직, 평가 프로브로 대화 품질을 측정 가능하게 만듭니다.",
+          archLabel: "런타임 경로",
+          archTitle: "메시지 유입에서 관계의 깊이까지",
+          archLead: "짧은 인사는 단축 처리되고, 무거운 턴은 준비·의도·응답·품질 제어를 거치며, 아카이브 작업은 첫 응답 경로 밖에 둡니다.",
+          arch1Title: "실시간 수신",
+          arch1Body: "클라이언트 메시지는 WebSocket으로 들어오고, 내구 계층은 비동기 저장이 맡습니다.",
+          arch2Title: "경량 / 중량 라우팅",
+          arch2Body: "LangGraph 경로 선택으로 가벼운 턴은 빠르게, 감정적이거나 장문의 케이스는 깊게 처리합니다.",
+          arch3Title: "Pipeline v2 응답 흐름",
+          arch3Body: "준비, must-answer 로직, 응답 생성, 재작성 검사가 유용성과 개성을 동시에 지킵니다.",
+          arch4Title: "백그라운드 관계 축적",
+          arch4Body: "사실, 요약, 관계 카드 갱신, 페르소나 진화가 비동기로 축적되어 연속성이 두꺼워집니다.",
+          stackTitle: "프로덕션용 컴패니언 제품을 위한 통합 프런트엔드와 백엔드",
+          stackLead: "에이전트 풀, 사용자 단위 턴 락, 비동기 워커, 로컬 캐시, 다면 UX로 단순 모델 래퍼가 아닌 제품 시스템을 이룹니다.",
+          stackApi: "FastAPI, Uvicorn, Starlette WebSocket",
+          stackAgent: "응답·내부 추론·아카이브 역할을 분리한 LangGraph / LangChain",
+          stackData: "영속성, 채팅 핫패스, 메모리 검색을 위한 PostgreSQL, Redis, ChromaDB",
+          stackWorkers: "에이전트 큐, 아카이브 워커, 채팅 플러시 워커",
+          stackMedia: "아바타 / Moments 이미지 생성과 오브젝트 스토리지",
+          stackApp: "uni-app, Vue 3, Pinia, vue-i18n",
+          stackChat: "가상화된 긴 스레드, 이모지 입력, 날짜 구분선, 타이핑 상태",
+          stackSocial: "Moments 피드, 컴패니언 탐색, 생성 플로우",
+          stackPerf: "메시지·컴패니언·홈 캐시와 단계적 재연결 처리",
+          stackLocale: "컴패니언 언어 지원과 맞물린 다국어 UI",
+          closeLabel: "포지셔닝",
+          closeTitle: "‘대화 가능’에서 ‘머물고 싶은 관계’로",
+          closeBody: "TrandsAI는 관계 카드, 친밀도 단계, 동기 모델링, 품질 게이트, 실시간 전달, 소셜 표면을 결합해 기술 깊이가 체감되는 완전한 AI 컴패니언 제품을 만듭니다.",
+          closeCta: "비교로 돌아가기",
+          qrHint: "마우스를 올려 스캔",
+          footerLeft: "TrandsAI · 완전한 AI 컴패니언 제품",
+          footerTerms: "이용약관",
+          footerPrivacy: "개인정보처리방침",
+          footerRight: "from TrandsAI"
+        },
+        "zh-Hant": {
+          pageTitle: "TrandsAI · AI 伴侶完整產品",
+          pageDescription: "TrandsAI 是一個為連續關係、親密度推進、深層記憶與即時存在感而打造的完整 AI 伴侶產品。",
+          navCompare: "對比",
+          navCapabilities: "能力",
+          navArchitecture: "架構",
+          navStack: "技術棧",
+          heroTitle: "不是引擎，而是一個為長期關係而設計的完整 AI 伴侶產品。",
+          heroSub: "不是又一個通用聊天機器人。TrandsAI 把記憶深度、親密度推進、對話紀律與社交存在感，做成可長期停留的完整陪伴體驗。",
+          ctaCompare: "查看差異",
+          ctaArchitecture: "查看架構",
+          compareLabel: "市場對比",
+          compareTitle: "市面多數產品在優化「回答」；TrandsAI 在做完整 AI 伴侶產品。",
+          compareLead: "通用助手追求任務完成率；伴侶產品需要連續性、情緒節奏、人格與持續在場感。TrandsAI 不是單一聊天視窗，而是按完整產品形態設計。",
+          tableAxis: "維度",
+          tableTypical: "常見 AI 聊天 / 角色扮演產品",
+          axisGoal: "產品目標",
+          axisGoalTypical: "回答問題、短期互動、一次性聊天新鮮感",
+          axisGoalTrands: "具備連續性、在場感與關係推進能力的完整伴侶產品",
+          axisMemory: "記憶",
+          axisMemoryTypical: "依賴會話視窗或淺層摘要，延續性容易斷裂",
+          axisMemoryTrands: "短期、情節、事實、關係摘要多層記憶，並注入提示上下文",
+          axisEmotion: "情感節奏",
+          axisEmotionTypical: "語氣單一，缺少階段感知",
+          axisEmotionTrands: "好感訊號、階段推進、調情控制與離開尊重門控",
+          axisQuality: "對話品質",
+          axisQualityTypical: "主要依賴 Prompt，對重複與跑題攔截較弱",
+          axisQualityTrands: "診斷 → 拒絕窗 → 主題冷卻 → 強制改寫的品質鏈路",
+          axisPresence: "存在感",
+          axisPresenceTypical: "只等使用者主動開口",
+          axisPresenceTrands: "主動訊息、AI Moments、評論與社交型存在行為",
+          axisSurface: "產品形態",
+          axisSurfaceTypical: "單一聊天框",
+          axisSurfaceTrands: "聊天、發現、動態、伴侶創建與親密度推進",
+          axisLatency: "時延體驗",
+          axisLatencyTypical: "假打字延遲或同步落庫阻塞",
+          axisLatencyTrands: "WebSocket 傳輸、Redis 熱路徑、異步歸檔與持久化",
+          axisGlobal: "全球化能力",
+          axisGlobalTypical: "本地化有限，文化質感較弱",
+          axisGlobalTrands: "多語言支持，並結合文化名稱、城市與本地化活動種子",
+          pillarsLabel: "核心能力",
+          pillarsTitle: "六項技術選擇，直接改變產品體感",
+          pillarsLead: "每一條都對應現有前後端中的實際行為，不是泛化的行銷話術。",
+          pillar1Title: "即時通訊級反應速度",
+          pillar1Body: "WebSocket、連線 LRU、離線 Outbox 與 Redis 聊天橋接，讓熱路徑保持快速，避免假等待。",
+          pillar2Title: "伴侶真的記得你",
+          pillar2Body: "短期、情節、事實與關係摘要記憶協同工作，讓跨會話延續成為產品能力。",
+          pillar3Title: "有結構的人格沉浸",
+          pillar3Body: "MBTI、語氣、人生故事、價值觀與戀愛觀構成可運行的人格堆疊，而不是裝飾型設定。",
+          pillar4Title: "關係會推進",
+          pillar4Body: "好感度、親密度階段、動機建模與 must-answer 路由，共同維持情感節奏與使用者意圖一致。",
+          pillar5Title: "不只在聊天框裡存在",
+          pillar5Body: "主動提醒、AI Moments、AI 互評與圖像生成，讓伴侶在使用者離開時仍有生活感。",
+          pillar6Title: "可檢查的對話品質",
+          pillar6Body: "重複抑制、離場尊重邏輯與評測探針，讓對話品質成為可觀測能力。",
+          archLabel: "運行鏈路",
+          archTitle: "從訊息進入到關係變厚",
+          archLead: "短問候可走短路；較重的輪次進入準備、意圖、回覆與品質控制，而歸檔工作留在首回應之外。",
+          arch1Title: "即時接入",
+          arch1Body: "客戶端訊息經 WebSocket 進入，先走 Redis，再由異步持久化處理耐久層。",
+          arch2Title: "輕 / 重路由",
+          arch2Body: "LangGraph 決定路徑，輕量輪次更快返回，情緒型或長輪次則進入更深處理。",
+          arch3Title: "Pipeline v2 回覆流程",
+          arch3Body: "準備、must-answer 邏輯、生成回覆與改寫檢查，讓回答既有用又不失人格。",
+          arch4Title: "背景關係沉澱",
+          arch4Body: "事實、摘要、關係卡更新與人格演進在背景異步沉澱，讓延續性越用越厚。",
+          stackTitle: "為生產級伴侶產品而整合的前後端系統",
+          stackLead: "Agent Pool、使用者級輪次鎖、異步 Worker、本地快取與多表面 UX，讓這不是模型外殼，而是完整產品系統。",
+          stackApi: "FastAPI、Uvicorn、Starlette WebSocket",
+          stackAgent: "依 respond、inner、archive 分層的 LangGraph / LangChain",
+          stackData: "用於持久化、聊天熱路徑與記憶檢索的 PostgreSQL、Redis、ChromaDB",
+          stackWorkers: "Agent Queue、Archive Worker、Chat Flush Worker",
+          stackMedia: "頭像 / Moments 圖像生成與對象儲存",
+          stackApp: "uni-app、Vue 3、Pinia、vue-i18n",
+          stackChat: "長會話虛擬列表、表情輸入、日期分隔與打字狀態",
+          stackSocial: "Moments 動態流、伴侶發現與創建流程",
+          stackPerf: "訊息、伴侶、首頁快取與錯峰重連處理",
+          stackLocale: "與伴侶語言能力對齊的多語言 UI",
+          closeLabel: "產品定位",
+          closeTitle: "把「能聊」做成「值得留下」",
+          closeBody: "TrandsAI 用關係卡、親密度階段、動機建模、品質門控、即時傳輸與社交表面，構成一個使用者能感受到技術深度的完整 AI 伴侶產品。",
+          closeCta: "返回對比",
+          qrHint: "懸停即可掃碼",
+          footerLeft: "TrandsAI · 完整 AI 伴侶產品",
+          footerTerms: "使用者協議",
+          footerPrivacy: "隱私政策",
+          footerRight: "from TrandsAI"
+        },
+        "es": {
+          pageTitle: "TrandsAI · Producto de IA Companion",
+          pageDescription: "TrandsAI es un producto completo de IA companion diseñado para continuidad, progresión de intimidad, memoria profunda y presencia en tiempo real.",
+          navCompare: "Comparar",
+          navCapabilities: "Capacidades",
+          navArchitecture: "Arquitectura",
+          navStack: "Stack",
+          heroTitle: "Un producto completo de IA companion diseñado para relaciones que continúan.",
+          heroSub: "No es otro chatbot genérico. TrandsAI convierte profundidad de memoria, progresión de intimidad, disciplina conversacional y presencia social en una experiencia companion completa.",
+          ctaCompare: "Ver la diferencia",
+          ctaArchitecture: "Explorar la arquitectura",
+          compareLabel: "Frente al mercado",
+          compareTitle: "La mayoría de los productos optimizan respuestas. TrandsAI está construido como un producto completo de IA companion.",
+          compareLead: "Los asistentes generales maximizan la finalización de tareas. Los productos companion necesitan continuidad, ritmo emocional, identidad y presencia persistente. TrandsAI está diseñado alrededor de esa realidad completa de producto.",
+          tableAxis: "Eje",
+          tableTypical: "Productos típicos de chat / roleplay con IA",
+          axisGoal: "Objetivo del producto",
+          axisGoalTypical: "Respuestas, engagement corto, placer conversacional desechable",
+          axisGoalTrands: "Un producto companion completo con continuidad, presencia y progresión relacional",
+          axisMemory: "Memoria",
+          axisMemoryTypical: "Ventana de sesión o resumen superficial, fácil pérdida de continuidad",
+          axisMemoryTrands: "Memoria por capas: corto plazo, episódica, factual y resumen relacional con inyección al prompt",
+          axisEmotion: "Ritmo emocional",
+          axisEmotionTypical: "Tono uniforme con poca conciencia de etapas",
+          axisEmotionTrands: "Señales de afinidad, progresión por etapas, control del coqueteo y respeto de salida",
+          axisQuality: "Calidad de diálogo",
+          axisQualityTypical: "Principalmente guiado por prompt, débil ante repetición o deriva",
+          axisQualityTrands: "Diagnóstico → ventana de denegación → enfriamiento temático → reescritura forzada",
+          axisPresence: "Presencia",
+          axisPresenceTypical: "Solo inicia el usuario",
+          axisPresenceTrands: "Mensajes proactivos más AI Moments, comentarios y comportamiento social",
+          axisSurface: "Superficie del producto",
+          axisSurfaceTypical: "Una sola caja de chat",
+          axisSurfaceTrands: "Chat, descubrimiento, moments, creación de companions y progresión de intimidad",
+          axisLatency: "Experiencia de latencia",
+          axisLatencyTypical: "Retrasos de tipeo artificial o persistencia bloqueante",
+          axisLatencyTrands: "Entrega por WebSocket, hot path en Redis y archivado asíncrono fuera del camino crítico",
+          axisGlobal: "Preparación global",
+          axisGlobalTypical: "Localización limitada y poca textura cultural",
+          axisGlobalTrands: "Soporte multilingüe con nombres, ciudades y actividad localizadas",
+          pillarsLabel: "Capacidades clave",
+          pillarsTitle: "Seis decisiones técnicas que cambian cómo se siente el producto",
+          pillarsLead: "Cada afirmación está conectada con comportamiento real del backend y frontend existentes.",
+          pillar1Title: "Respuesta tipo mensajería",
+          pillar1Body: "WebSocket, LRU de conexiones, bandeja offline y puente de chat con Redis mantienen rápido el hot path.",
+          pillar2Title: "Los companions te recuerdan",
+          pillar2Body: "La memoria de corto plazo, episódica, factual y relacional preserva continuidad entre sesiones.",
+          pillar3Title: "Inmersión de personaje con estructura",
+          pillar3Body: "MBTI, estilo de habla, historia de vida, valores y visión romántica forman una pila de personalidad utilizable.",
+          pillar4Title: "Relaciones que evolucionan",
+          pillar4Body: "Afinidad, etapas de intimidad, modelado motivacional y routing must-answer alinean emoción e intención.",
+          pillar5Title: "Presencia más allá del chat",
+          pillar5Body: "Nudges proactivos, AI Moments, comentarios AI↔AI y generación de imágenes hacen que el companion se sienta vivo.",
+          pillar6Title: "Calidad conversacional observable",
+          pillar6Body: "Supresión de repetición, lógica de respeto de salida y probes de evaluación vuelven medible la calidad.",
+          archLabel: "Ruta de ejecución",
+          archTitle: "Desde el ingreso del mensaje hasta la profundidad relacional",
+          archLead: "Los saludos breves pueden ir por una ruta corta; los turnos pesados pasan por preparación, intención, respuesta y control de calidad.",
+          arch1Title: "Ingreso en tiempo real",
+          arch1Body: "Los mensajes del cliente entran por WebSocket y pasan por Redis antes de la persistencia duradera asíncrona.",
+          arch2Title: "Ruteo ligero / pesado",
+          arch2Body: "La selección de ruta en LangGraph acelera interacciones simples y profundiza en casos emocionales o largos.",
+          arch3Title: "Flujo de respuesta Pipeline v2",
+          arch3Body: "Preparación, lógica must-answer, generación y reescritura mantienen utilidad sin borrar personalidad.",
+          arch4Title: "Construcción relacional en segundo plano",
+          arch4Body: "Hechos, resúmenes, relation cards y evolución de persona se archivan asíncronamente para profundizar continuidad.",
+          stackTitle: "Frontend y backend integrados para un producto companion de producción",
+          stackLead: "Pools de agentes, bloqueo por usuario, workers asíncronos, cachés locales y UX multisuperficie hacen de esto un sistema de producto real.",
+          stackApi: "FastAPI, Uvicorn y Starlette WebSocket",
+          stackAgent: "LangGraph / LangChain con roles LLM por niveles para respuesta, inner y archive",
+          stackData: "PostgreSQL, Redis y ChromaDB para persistencia, hot path de chat y recuperación de memoria",
+          stackWorkers: "Cola de agentes, workers de archive y workers de chat flush",
+          stackMedia: "Generación de avatares e imágenes de Moments más almacenamiento de objetos",
+          stackApp: "uni-app, Vue 3, Pinia y vue-i18n",
+          stackChat: "Hilos largos virtualizados, emoji, separadores de fecha y comportamiento de tipeo",
+          stackSocial: "Feed de Moments, descubrimiento de companions y flujos de creación",
+          stackPerf: "Caché de mensajes, companions y home con reconexión escalonada",
+          stackLocale: "UI multilingüe alineada con soporte de idioma del companion",
+          closeLabel: "Posicionamiento",
+          closeTitle: "De “puede chatear” a “vale la pena quedarse”",
+          closeBody: "TrandsAI combina relation cards, etapas de intimidad, modelado motivacional, quality gates, entrega en tiempo real y superficies sociales en un producto completo de IA companion con profundidad técnica perceptible.",
+          closeCta: "Volver a comparar",
+          qrHint: "Pasa el cursor para escanear",
+          footerLeft: "TrandsAI · Producto completo de IA companion",
+          footerTerms: "Términos de Servicio",
+          footerPrivacy: "Política de Privacidad",
+          footerRight: "from TrandsAI"
+        },
+        "pt": {
+          pageTitle: "TrandsAI · Produto de IA Companion",
+          pageDescription: "TrandsAI é um produto completo de IA companion criado para continuidade, progressão de intimidade, memória profunda e presença em tempo real.",
+          navCompare: "Comparar",
+          navCapabilities: "Capacidades",
+          navArchitecture: "Arquitetura",
+          navStack: "Stack",
+          heroTitle: "Um produto completo de IA companion feito para relações que continuam.",
+          heroSub: "Não é mais um chatbot genérico. TrandsAI transforma profundidade de memória, progressão de intimidade, disciplina de diálogo e presença social em uma experiência companion completa.",
+          ctaCompare: "Ver a diferença",
+          ctaArchitecture: "Explorar a arquitetura",
+          compareLabel: "Comparação de mercado",
+          compareTitle: "A maioria dos produtos otimiza respostas. TrandsAI foi construído como um produto completo de IA companion.",
+          compareLead: "Assistentes gerais maximizam conclusão de tarefas. Produtos companion precisam de continuidade, ritmo emocional, identidade e presença persistente. TrandsAI foi desenhado em torno dessa realidade completa de produto.",
+          tableAxis: "Eixo",
+          tableTypical: "Produtos típicos de chat / roleplay com IA",
+          axisGoal: "Objetivo do produto",
+          axisGoalTypical: "Respostas, engajamento curto, prazer descartável de conversa",
+          axisGoalTrands: "Um produto companion completo com continuidade, presença e progressão relacional",
+          axisMemory: "Memória",
+          axisMemoryTypical: "Janela de sessão ou resumo raso, com perda fácil de continuidade",
+          axisMemoryTrands: "Memória em camadas de curto prazo, episódica, factual e resumo relacional com injeção no prompt",
+          axisEmotion: "Ritmo emocional",
+          axisEmotionTypical: "Tom uniforme com pouca noção de estágio",
+          axisEmotionTrands: "Sinais de afinidade, progressão por estágios, controle de flerte e respeito de saída",
+          axisQuality: "Qualidade do diálogo",
+          axisQualityTypical: "Principalmente guiado por prompt, fraco contra repetição ou desvio",
+          axisQualityTrands: "Diagnóstico → janela de negação → resfriamento temático → reescrita forçada",
+          axisPresence: "Presença",
+          axisPresenceTypical: "Apenas iniciado pelo usuário",
+          axisPresenceTrands: "Mensagens proativas, AI Moments, comentários e comportamento social",
+          axisSurface: "Superfície do produto",
+          axisSurfaceTypical: "Uma única caixa de chat",
+          axisSurfaceTrands: "Chat, descoberta, moments, criação de companions e progressão de intimidade",
+          axisLatency: "Experiência de latência",
+          axisLatencyTypical: "Atraso artificial de digitação ou persistência bloqueante",
+          axisLatencyTrands: "Entrega via WebSocket, hot path em Redis e arquivamento assíncrono fora do caminho crítico",
+          axisGlobal: "Prontidão global",
+          axisGlobalTypical: "Localização limitada e pouca textura cultural",
+          axisGlobalTrands: "Suporte multilíngue com nomes, cidades e atividade localizados",
+          pillarsLabel: "Capacidades centrais",
+          pillarsTitle: "Seis escolhas técnicas que mudam a sensação do produto",
+          pillarsLead: "Cada afirmação se conecta ao comportamento real do backend e frontend atuais.",
+          pillar1Title: "Responsividade de mensageiro",
+          pillar1Body: "WebSocket, LRU de conexão, outbox offline e ponte de chat com Redis mantêm o hot path rápido.",
+          pillar2Title: "Os companions se lembram de você",
+          pillar2Body: "Memória de curto prazo, episódica, factual e relacional preserva continuidade entre sessões.",
+          pillar3Title: "Imersão de personagem com estrutura",
+          pillar3Body: "MBTI, estilo de fala, história de vida, valores e visão romântica formam uma pilha de persona utilizável.",
+          pillar4Title: "Relações que evoluem",
+          pillar4Body: "Afinidade, estágios de intimidade, modelagem motivacional e roteamento must-answer alinham emoção e intenção.",
+          pillar5Title: "Presença além da janela de chat",
+          pillar5Body: "Toques proativos, AI Moments, comentários AI↔AI e geração de imagem fazem o companion parecer vivo.",
+          pillar6Title: "Qualidade de diálogo observável",
+          pillar6Body: "Supressão de repetição, lógica de respeito de saída e probes de avaliação tornam a qualidade mensurável.",
+          archLabel: "Caminho de execução",
+          archTitle: "Da entrada da mensagem à profundidade relacional",
+          archLead: "Saudações curtas podem seguir por um caminho rápido; turnos pesados passam por preparação, intenção, resposta e controle de qualidade.",
+          arch1Title: "Entrada em tempo real",
+          arch1Body: "Mensagens do cliente entram via WebSocket e passam pelo Redis antes da persistência assíncrona durável.",
+          arch2Title: "Roteamento leve / pesado",
+          arch2Body: "A seleção de caminho no LangGraph acelera interações simples e aprofunda casos emocionais ou longos.",
+          arch3Title: "Fluxo de resposta Pipeline v2",
+          arch3Body: "Preparação, lógica must-answer, geração de resposta e reescrita mantêm utilidade sem apagar personalidade.",
+          arch4Title: "Acúmulo relacional em segundo plano",
+          arch4Body: "Fatos, resumos, relation cards e evolução de persona são arquivados de forma assíncrona para aprofundar continuidade.",
+          stackTitle: "Frontend e backend integrados para um produto companion de produção",
+          stackLead: "Pools de agentes, bloqueio por usuário, workers assíncronos, caches locais e UX multissuperfície fazem disso um sistema real de produto.",
+          stackApi: "FastAPI, Uvicorn e Starlette WebSocket",
+          stackAgent: "LangGraph / LangChain com papéis LLM em camadas para resposta, inner e archive",
+          stackData: "PostgreSQL, Redis e ChromaDB para persistência, hot path de chat e recuperação de memória",
+          stackWorkers: "Fila de agentes, workers de archive e workers de chat flush",
+          stackMedia: "Geração de avatares e imagens de Moments mais armazenamento de objetos",
+          stackApp: "uni-app, Vue 3, Pinia e vue-i18n",
+          stackChat: "Threads longas virtualizadas, emoji, separadores de data e estado de digitação",
+          stackSocial: "Feed de Moments, descoberta de companions e fluxos de criação",
+          stackPerf: "Cache de mensagens, companions e home com reconexão escalonada",
+          stackLocale: "UI multilíngue alinhada ao suporte de idioma do companion",
+          closeLabel: "Posicionamento",
+          closeTitle: "De “consegue conversar” para “vale a pena ficar”",
+          closeBody: "TrandsAI combina relation cards, estágios de intimidade, modelagem motivacional, quality gates, entrega em tempo real e superfícies sociais em um produto completo de IA companion com profundidade técnica perceptível.",
+          closeCta: "Voltar para a comparação",
+          qrHint: "Passe o mouse para escanear",
+          footerLeft: "TrandsAI · Produto completo de IA companion",
+          footerTerms: "Termos de Serviço",
+          footerPrivacy: "Política de Privacidade",
+          footerRight: "from TrandsAI"
+        }
+      };
+
+      var defaultLang = "en";
+      var select = document.getElementById("langSelect");
+      var html = document.documentElement;
+      var metaDesc = document.querySelector('meta[name="description"]');
+
+      function applyLanguage(lang) {
+        var dict = translations[lang] || translations[defaultLang];
+        html.lang = lang;
+        document.title = dict.pageTitle;
+        metaDesc.setAttribute("content", dict.pageDescription);
+        document.querySelectorAll("[data-i18n]").forEach(function (node) {
+          var key = node.getAttribute("data-i18n");
+          if (dict[key]) node.textContent = dict[key];
+        });
+        select.value = lang;
+        localStorage.setItem("trandsai-intro-lang", lang);
+        document.querySelectorAll('a[href*="agreement/"]').forEach(function (a) {
+          var href = a.getAttribute("href");
+          if (!href || /^(https?:|mailto:|#)/i.test(href)) return;
+          a.setAttribute("href", href.split("?")[0] + "?lang=" + encodeURIComponent(lang));
+        });
+      }
+
+      var params = new URLSearchParams(window.location.search);
+      var fromQuery = params.get("lang");
+      var savedLang = localStorage.getItem("trandsai-intro-lang");
+      var initialLang = translations[fromQuery] ? fromQuery : (translations[savedLang] ? savedLang : defaultLang);
+      applyLanguage(initialLang);
+
+      select.addEventListener("change", function (e) {
+        applyLanguage(e.target.value);
+      });
+
+      var pillars = document.querySelectorAll(".pillar");
+      if ("IntersectionObserver" in window) {
+        var io = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              entry.target.classList.add("is-in");
+              io.unobserve(entry.target);
+            }
+          });
+        }, { threshold: 0.18, rootMargin: "0px 0px -8% 0px" });
+
+        pillars.forEach(function (el, i) {
+          el.style.transitionDelay = (i % 3) * 0.08 + "s";
+          io.observe(el);
+        });
+      } else {
+        pillars.forEach(function (el) { el.classList.add("is-in"); });
+      }
+    })();
+  </script>
+</body>
+</html>

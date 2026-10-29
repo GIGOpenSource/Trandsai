@@ -1,0 +1,1 @@
+import{l as e}from"./vendor-ant-pro-card-MP1sY4ld.js";import{n as t}from"./vendor-ant-pro-table-D62-SlC5.js";import{i as n}from"./request-DlzBcoBT.js";var r=e();function i({value:e,locale:i}){let a=n(e,i);return a===`-`?`-`:(0,r.jsx)(t.Text,{ellipsis:{tooltip:a},style:{maxWidth:`100%`,margin:0},children:a})}export{i as t};

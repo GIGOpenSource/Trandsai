@@ -1,0 +1,205 @@
+:root {
+  --ink: #14110f;
+  --ink-soft: #2a2420;
+  --paper: #f3ece4;
+  --mist: #e8ddd2;
+  --warm: #c45c3e;
+  --steel: #607079;
+  --line: rgba(20, 17, 15, 0.12);
+  --white: #fffaf6;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: "Outfit", "PingFang TC", "Noto Sans TC", "Hiragino Sans", "Malgun Gothic", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 70% 40% at 0% 0%, rgba(196, 92, 62, 0.08), transparent 50%),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(47, 107, 90, 0.08), transparent 50%),
+    var(--paper);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 5vw;
+  background: rgba(243, 236, 228, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+  border: 1px solid var(--line);
+  background: var(--white);
+  transition: color 0.25s var(--ease), border-color 0.25s var(--ease), background 0.25s var(--ease);
+  white-space: nowrap;
+}
+
+.back-btn:hover {
+  color: var(--warm);
+  border-color: rgba(196, 92, 62, 0.35);
+  background: rgba(255, 250, 246, 0.95);
+}
+
+.back-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.brand {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.02em;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.nav-mini {
+  display: flex;
+  gap: 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.nav-mini a:hover { color: var(--warm); }
+
+.lang-select {
+  appearance: none;
+  background: var(--white);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 0.55rem 0.85rem;
+  min-width: 128px;
+  cursor: pointer;
+}
+
+.hero {
+  padding: 3.5rem 5vw 2rem;
+  max-width: 860px;
+}
+
+.hero .eyebrow {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--warm);
+  margin-bottom: 0.8rem;
+}
+
+.hero h1 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: clamp(2rem, 4.5vw, 3.1rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin-bottom: 0.85rem;
+}
+
+.hero .meta {
+  color: var(--steel);
+  font-size: 0.92rem;
+  font-weight: 300;
+}
+
+.doc {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 5vw 5rem;
+}
+
+.panel {
+  background: var(--white);
+  border: 1px solid var(--line);
+  padding: 2rem 1.6rem;
+}
+
+.panel section + section {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
+}
+
+.panel h2 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-size: 1.35rem;
+  font-weight: 400;
+  margin-bottom: 0.85rem;
+}
+
+.panel p,
+.panel li {
+  font-size: 0.96rem;
+  color: var(--ink-soft);
+  font-weight: 300;
+}
+
+.panel p + p { margin-top: 0.75rem; }
+
+.panel ul {
+  margin: 0.75rem 0 0 1.15rem;
+}
+
+.panel li + li { margin-top: 0.4rem; }
+
+.note {
+  margin-top: 1.5rem;
+  padding: 1rem 1.1rem;
+  background: var(--mist);
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+
+.footer {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 0 5vw 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--steel);
+}
+
+.footer a:hover { color: var(--warm); }
+
+@media (max-width: 720px) {
+  .nav-mini { display: none; }
+  .panel { padding: 1.5rem 1.15rem; }
+  .back-btn span:not(.back-icon) { display: none; }
+  .back-btn { padding: 0.45rem 0.6rem; }
+}

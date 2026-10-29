@@ -1,0 +1,803 @@
+/**
+ * @file theme.scss
+ * @description 全局主题令牌与基础件（对齐 Figma 黄粉品牌）。
+ * - 暗色默认；亮色 `[data-theme="light"]` / `.theme-light`
+ * - Composer / 顶栏 / 圆角等尺寸令牌见文内「间距 / Composer」
+ * - 表单/滚轮/CTA/Composer 组合件见 ui.scss
+ * - 规范文档：docs/深色模式设计标准.md
+ * - 由 App.vue 全局 @import
+ */
+
+$bg: #0c0813;
+$bg-card: rgba(255, 255, 255, 0.05);
+$bg-secondary: #444444;
+$bg-input: rgba(255, 255, 255, 0.05);
+$fg: #fafafa;
+$fg-muted: #b5b5b5;
+$border: #444444;
+$brand: #FF659B;
+$brand-end: #B933E6;
+$destructive: #ef4444;
+
+/* -------------------------------------------------------------------------- */
+/* 设计令牌 — 暗色默认（对齐 React .dark）                                        */
+/* -------------------------------------------------------------------------- */
+/* 使用 page 选择器定义 CSS 变量，确保 APP 端也能生效 */
+page, :root, uni-page-body, .uni-page-body {
+  --bg-secondary1: #{$bg-secondary};
+  --bg-input1:#{$bg-input};
+  --bg-btn:#{$bg-card};
+  /* React: --background / --foreground / --card … */
+  --bg: #{$bg};
+  --bg-card: #{$bg-card};
+  --modal-bg: #0c0813;
+  --surface-sheet: #0c0813;
+  --surface-sheet-fade: rgba(12, 8, 19, 0.55);
+  --surface-inset: rgba(255, 255, 255, 0.05);
+  --surface-faint: rgba(255, 255, 255, 0.03);
+  --border-soft: rgba(255, 255, 255, 0.05);
+  --bg-secondary: #{$bg-secondary};
+  --bg-input: #{$bg-input};
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --bubble-ai-bg: #1c1c1e;
+  --fg: #{$fg};
+  --fg-muted: #{$fg-muted};
+  --fg-soft: rgba(255, 255, 255, 0.78);
+  --fg-faint: rgba(255, 255, 255, 0.45);
+  --fg-dim: rgba(255, 255, 255, 0.4);
+  --fg-placeholder: rgba(255, 255, 255, 0.3);
+  --fg-on-brand: #ffffff;
+  --fg-disabled: rgba(255, 255, 255, 0.4);
+  --surface-disabled: rgba(255, 255, 255, 0.2);
+  --border: #{$border};
+  --bg-active: rgba(255, 255, 255, 0.1);
+ /* 交互强调色：Tab/链接高亮用前景色；CTA 用品牌渐变 */
+   --primary: #fafafa;
+   --primary-end: #B933E6;
+   --brand: #FF659B; /* 马甲包品牌粉 */
+   --brand-end: #B933E6; /* 马甲包品牌紫 */
+   --brand-text: var(--brand);
+   --gradient-brand: linear-gradient(157.43deg, var(--brand) 21.98%, var(--brand-end) 113.24%);
+   /* 底栏发送 / 小 CTA */
+   --gradient-brand-btn: linear-gradient(139.53deg, var(--brand) 21.98%, var(--brand-end) 113.24%);
+   /* 页签选中条：深色用品牌渐变，浅色用深色实线 */
+   --tab-underline: var(--gradient-brand);
+   --preview-gradient: linear-gradient(135deg, rgba(45, 20, 55, 0.95), rgba(40, 15, 40, 0.95));
+   --splash-warm-bg: #12081a;
+  --destructive: #ee3639;
+  --success: #17ca74;
+  --link: #3291f6;
+  --safe-tab: 72px;
+  /* 间距 / 字号（设计 16pt → 代码 32rpx；主标题 20pt → 40rpx） */
+  --page-gutter: 32rpx;
+  --header-content-h: 116rpx;
+  --header-back-gap: 24rpx; /* 返回图标右侧到标题/头像 */
+  --radius-control: 32rpx; /* 16：输入胶囊 / 发送钮 */
+  --radius-panel: 24rpx; /* 12：浮层 */
+  /* 底栏 Composer（聊天 / 评论） */
+  --composer-h: 82rpx; /* 41：单行输入与发送钮同高 */
+  --composer-btn-w: 104rpx; /* 52 */
+  --composer-line-h: 42rpx; /* 21：单行字高 */
+  --composer-pad-y: 20rpx; /* (82-42)/2 */
+  --composer-pad-x: 24rpx; /* 12 */
+  --composer-gap: 24rpx; /* 12：输入与按钮间距 */
+  --composer-bar-pad-y: 24rpx; /* 12 */
+  --composer-icon: 56rpx; /* 28 */
+  --fs-title: 40rpx;
+  --fs-row-title: 32rpx;
+  --fs-body: 28rpx;
+  --fs-caption: 24rpx;
+  --fs-meta: 22rpx;
+  /* uview-plus 暗色适配 */
+   --up-main-color: #fafafa;
+   --up-content-color: #b5b5b5;
+   --up-tips-color: #909193;
+   --up-border-color: #444444;
+   --up-bg-color: #1c1c1e;
+   --up-card-bg-color: #1c1c1e;
+   --up-light-color: #2c2c2e;
+ }
+
+/* 亮色：只覆写颜色；间距/圆角/Composer/字号等结构令牌继承深色默认，禁止在此改布局量 */
+html[data-theme="light"],
+page[data-theme="light"],
+html.theme-light,
+.app-shell.theme-light,
+.theme-light {
+  --bg-input1: #ffffff;
+  --bg-btn: #f5f5f5;
+  --bg: #f5f5f5;
+  --bg-card: #ffffff;
+  --modal-bg: #ffffff;
+  --surface-sheet: #ffffff;
+  --surface-sheet-fade: rgba(255, 255, 255, 0.75);
+  --surface-inset: rgba(10, 10, 10, 0.04);
+  --surface-faint: rgba(10, 10, 10, 0.03);
+  --border-soft: rgba(10, 10, 10, 0.08);
+  --bg-secondary: #f5f5f5;
+  --bg-secondary1: #ebebeb;
+  --bg-input: #f5f5f5;
+  --card-bg: #ffffff;
+  --bubble-ai-bg: #ffffff;
+  --fg: #0a0a0a;
+  --fg-muted: rgba(10, 10, 10, 0.6);
+  --fg-soft: rgba(10, 10, 10, 0.78);
+  --fg-faint: rgba(10, 10, 10, 0.45);
+  --fg-dim: rgba(10, 10, 10, 0.4);
+  --fg-placeholder: rgba(10, 10, 10, 0.3);
+  --fg-on-brand: #ffffff;
+  --fg-accent: rgba(10, 10, 10, 0.8);
+  --fg-subtitle: rgba(10, 10, 10, 0.4);
+  --fg-disabled: rgba(10, 10, 10, 0.4);
+  --surface-disabled: rgba(10, 10, 10, 0.08);
+  --border: rgba(10, 10, 10, 0.1);
+  --bg-active: rgba(10, 10, 10, 0.05);
+  --primary: #0a0a0a;
+  --primary-end: #B933E6;
+  /* 品牌渐变角度/停靠点与深色一致 */
+  --brand: #FF659B;
+  --brand-end: #B933E6;
+  --brand-text: #C73A8A;
+  --gradient-brand: linear-gradient(157.43deg, var(--brand) 21.98%, var(--brand-end) 113.24%);
+  --gradient-brand-btn: linear-gradient(139.53deg, var(--brand) 21.98%, var(--brand-end) 113.24%);
+  --tab-underline: var(--fg, #0a0a0a);
+  --preview-gradient: linear-gradient(135deg, #fff0f8, #f5e8ff);
+  --splash-warm-bg: #12081a;
+  --destructive: #ee3639;
+  --success: #17ca74;
+  --link: #3291f6;
+  --image-bg: #d5d5d5;
+  /* uview-plus 亮色适配（颜色） */
+  --up-main-color: #0a0a0a;
+  --up-content-color: rgba(10, 10, 10, 0.6);
+  --up-tips-color: rgba(10, 10, 10, 0.4);
+  --up-border-color: rgba(10, 10, 10, 0.1);
+  --up-bg-color: #f5f5f5;
+  --up-card-bg-color: #ffffff;
+  --up-light-color: #f5f5f5;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 付费面锁定深色（金卡 PNG / 钻石资产不反色）；充值弹窗已跟主题，不再挂此 class */
+/* -------------------------------------------------------------------------- */
+.theme-lock-dark {
+  --bg-input1: rgba(255, 255, 255, 0.05);
+  --bg-btn: rgba(255, 255, 255, 0.05);
+  --bg: #0c0813;
+  --bg-card: rgba(255, 255, 255, 0.05);
+  --modal-bg: #0c0813;
+  --surface-sheet: #0c0813;
+  --surface-sheet-fade: rgba(12, 8, 19, 0.55);
+  --surface-inset: rgba(255, 255, 255, 0.05);
+  --surface-faint: rgba(255, 255, 255, 0.03);
+  --border-soft: rgba(255, 255, 255, 0.05);
+  --bg-secondary: #444444;
+  --bg-secondary1: #444444;
+  --bg-input: rgba(255, 255, 255, 0.05);
+  --card-bg: rgba(255, 255, 255, 0.05);
+  --fg: #fafafa;
+  --fg-muted: #b5b5b5;
+  --fg-soft: rgba(255, 255, 255, 0.78);
+  --fg-faint: rgba(255, 255, 255, 0.45);
+  --fg-dim: rgba(255, 255, 255, 0.4);
+  --fg-placeholder: rgba(255, 255, 255, 0.3);
+  --fg-on-brand: #ffffff;
+  --fg-disabled: rgba(255, 255, 255, 0.4);
+  --surface-disabled: rgba(255, 255, 255, 0.2);
+  --border: #444444;
+  --bg-active: rgba(255, 255, 255, 0.1);
+  --primary: #fafafa;
+  --brand-text: #FF659B;
+}
+
+/* 浅色主题：白描边图标跟前景色（变黑），勿用于品牌色 / VIP 资产图 */
+html[data-theme="light"] .icon-on-fg,
+page[data-theme="light"] .icon-on-fg,
+html.theme-light .icon-on-fg,
+.theme-light .icon-on-fg {
+  filter: invert(1);
+}
+
+/* 浅色主题：品牌渐变图标压成深色（Tab 选中等）；聊天底栏表情/发送勿加 icon-brand，保持渐变 */
+html[data-theme="light"] .icon-brand,
+page[data-theme="light"] .icon-brand,
+html.theme-light .icon-brand,
+.theme-light .icon-brand {
+  filter: brightness(0);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 页面基底                                                                    */
+/* -------------------------------------------------------------------------- */
+page {
+  background: var(--bg, #{$bg});
+  color: var(--fg, #{$fg});
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    sans-serif;
+  font-size: var(--fs-body, 28rpx);
+  height: 100%;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: var(--bg, #{$bg}) !important;
+  color: var(--fg, #{$fg});
+  overflow: visible;
+}
+
+/*
+ * 浅色：把 page / uni-page-body 底色一并盖成浅色。
+ * 这些节点默认 --bg 仍是暗色；安卓 adjustResize 露缝时就是这块黑底。
+ * 只改颜色，不碰 softinput / spacer。
+ */
+html[data-theme="light"] page,
+html[data-theme="light"] uni-page,
+html[data-theme="light"] uni-page-wrapper,
+html[data-theme="light"] uni-page-body,
+html[data-theme="light"] .uni-page-body,
+html[data-theme="light"] body,
+html[data-theme="light"] #app,
+html.theme-light page,
+html.theme-light uni-page,
+html.theme-light uni-page-wrapper,
+html.theme-light uni-page-body,
+html.theme-light .uni-page-body,
+html.theme-light body,
+html.theme-light #app,
+page[data-theme="light"],
+page.theme-light,
+uni-page-body[data-theme="light"],
+uni-page-body.theme-light,
+uni-page-wrapper[data-theme="light"],
+uni-page-wrapper.theme-light {
+  --bg: #f5f5f5;
+  background: #f5f5f5;
+  background-color: #f5f5f5;
+}
+
+uni-page-body,
+uni-page-wrapper,
+.uni-page-body {
+  height: 100%;
+  display: block;
+  box-sizing: border-box;
+  background: var(--bg, #{$bg});
+}
+
+/* 对齐 React：mx-auto max-w-2xl min-h-screen bg-background */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100%;
+  box-sizing: border-box;
+  background: var(--bg, #{$bg});
+  color: var(--fg, #{$fg});
+  width: 100%;
+  max-width: 672px;
+  margin: 0 auto;
+  position: relative;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-shrink: 0;
+  background: var(--bg, #{$bg});
+  /* Figma 顶栏无底部分割线 */
+  border-bottom: none;
+}
+
+.app-header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 116rpx;
+  padding: 0 32rpx;
+}
+
+.app-title {
+  font-size: 34rpx;
+  font-weight: 600;
+  color: var(--fg, #{$fg});
+}
+
+/* -------------------------------------------------------------------------- */
+/* 按钮 / 输入 / 卡片 / 骨架                                                    */
+/* -------------------------------------------------------------------------- */
+.btn-primary {
+  background: var(--gradient-brand);
+  color: var(--fg-on-brand, #ffffff);
+  border: none;
+  border-radius: 9999px;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+  font-weight: 500;
+}
+
+.btn-primary[disabled] {
+  opacity: 0.6;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--fg, #{$fg});
+  border: 1px solid var(--border, #{$border});
+  border-radius: 24rpx;
+  padding: 24rpx 32rpx;
+  font-size: 30rpx;
+}
+
+.input-field {
+  width: 100%;
+  /* uni-input 默认 height:1.4em + box-sizing:border-box，加 padding 会把可点区域压成 0 */
+  height: auto !important;
+  min-height: 96rpx; /* Figma 48 */
+  line-height: 1.4;
+  overflow: visible;
+  background: var(--surface-inset, var(--bg-input, #{$bg-input}));
+  border: 1rpx solid var(--border-soft, var(--border, #{$border}));
+  border-radius: 32rpx; /* 16 */
+  padding: 32rpx; /* 16 */
+  color: var(--fg, #{$fg});
+  font-size: var(--fs-body, 28rpx); /* 14 */
+  font-weight: 500;
+  box-sizing: border-box;
+}
+
+.input-field::placeholder {
+  color: var(--fg-placeholder, var(--fg-muted, #{$fg-muted}));
+}
+
+/* 确保内部原生 input 可聚焦、可输入 */
+.input-field .uni-input-wrapper,
+.input-field .uni-input-input {
+  height: auto !important;
+  min-height: 1.2em;
+  line-height: inherit;
+  color: inherit;
+  font-size: inherit;
+}
+
+uni-input,
+uni-textarea {
+  pointer-events: auto;
+}
+
+.uni-input-input,
+.uni-textarea-textarea {
+  pointer-events: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 统一输入框文字与占位符颜色，避免 uview 内部写死颜色不跟随主题 */
+.uni-input-input,
+.uni-textarea-textarea {
+  color: var(--fg, #{$fg}) !important;
+}
+.uni-input-placeholder,
+.uni-textarea-placeholder {
+  color: var(--fg-muted, #{$fg-muted}) !important;
+}
+
+/* textarea 需固定高度；勿用 height:auto!important（App scroll-view 内会压扁可编辑区） */
+uni-textarea.input-field,
+.input-field.textarea {
+  height: 200rpx !important;
+  min-height: 200rpx !important;
+  line-height: 1.5;
+  overflow: visible !important;
+  box-sizing: border-box;
+}
+
+uni-textarea.input-field .uni-textarea-textarea,
+.input-field.textarea .uni-textarea-textarea {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 120rpx !important;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.text-muted {
+  color: var(--fg-muted, #{$fg-muted});
+}
+
+/* 品牌色文字（评论名、链接、亲密度等；浅色用 --brand-text 深金黄） */
+.text-primary {
+  color: var(--brand-text, var(--brand, #{$brand}));
+}
+
+.card {
+  background: var(--bg-card, #{$bg-card});
+  // border: 1px solid var(--border, #{$border});
+  border-radius:50rpx;
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-input, #{$bg-input}) 25%,
+    var(--bg-secondary, #{$bg-secondary}) 50%,
+    var(--bg-input, #{$bg-input}) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.2s infinite;
+  border-radius: 16rpx;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 自定义 TabBar（对齐 React TabBar）                                           */
+/* -------------------------------------------------------------------------- */
+.tab-bar {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 672px;
+  right: auto;
+  bottom: 0;
+  z-index: 50;
+  background: transparent;
+  border-top: none;
+  box-sizing: border-box;
+}
+
+.tab-bar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  height: 110rpx;
+  padding: 0 10rpx;
+}
+
+/* 仅作用于底栏，勿全局污染页面内 Tab（曾导致账单页 .tab-item 无样式） */
+.tab-bar .tab-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4rpx;
+  position: relative;
+  flex: 1;
+  padding: 8rpx 0;
+}
+
+.tab-bar .tab-icon {
+  font-size: 40rpx;
+}
+
+.tab-bar .tab-label {
+  font-size: 20rpx;
+}
+
+/* 浅色：底栏选中文案也用深色（勿再黄字） */
+html[data-theme="light"] .tab-bar .tab-label.active,
+page[data-theme="light"] .tab-bar .tab-label.active,
+html.theme-light .tab-bar .tab-label.active,
+.theme-light .tab-bar .tab-label.active {
+  color: var(--fg, #0a0a0a);
+}
+
+/* 浅色：页签选中条（朋友圈/机器人/伴侣资料等）用深色实线，贴近文字 */
+/* H5 上 text 会渲染为 uni-text，需同时匹配 */
+html[data-theme="light"] .header-tabs .tab-item.active::after,
+page[data-theme="light"] .header-tabs .tab-item.active::after,
+html.theme-light .header-tabs .tab-item.active::after,
+.theme-light .header-tabs .tab-item.active::after,
+html[data-theme="light"] .tabs text.active::after,
+page[data-theme="light"] .tabs text.active::after,
+html.theme-light .tabs text.active::after,
+.theme-light .tabs text.active::after,
+html[data-theme="light"] .tabs uni-text.active::after,
+page[data-theme="light"] .tabs uni-text.active::after,
+html.theme-light .tabs uni-text.active::after,
+.theme-light .tabs uni-text.active::after {
+  background: var(--fg, #0a0a0a);
+}
+
+.tab-bar .tab-badge {
+  position: absolute;
+  top: -8rpx;
+  right: -16rpx;
+  min-width: 32rpx;
+  height: 32rpx;
+  padding: 0 8rpx;
+  background: var(--brand, #{$brand});
+  color: #fff;
+  font-size: 20rpx;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 壳层装饰底：替代 profile/companion/login 顶区 PNG（无位图切图）              */
+/* -------------------------------------------------------------------------- */
+.shell-header-glow {
+  position: relative;
+  background-color: var(--bg, #0c0813);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.shell-header-glow::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 58%;
+  pointer-events: none;
+  z-index: 0;
+  background-size: 100% 100%, 100% 100%;
+  background-position: center top, center top;
+  background-repeat: no-repeat, no-repeat;
+}
+
+/* 淡花纹层：20% 不透明；自下而上由透明缓慢过渡到可见 */
+.shell-header-glow::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 58%;
+  pointer-events: none;
+  z-index: 0;
+  background-size: 80rpx 80rpx;
+  background-position: center top;
+  background-repeat: repeat;
+  opacity: 0.2;
+  -webkit-mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 28%,
+    rgba(0, 0, 0, 0.55) 55%,
+    rgba(0, 0, 0, 0.15) 78%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    180deg,
+    #000 0%,
+    #000 28%,
+    rgba(0, 0, 0, 0.55) 55%,
+    rgba(0, 0, 0, 0.15) 78%,
+    transparent 100%
+  );
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.shell-header-glow--dark::before {
+  background-image:
+    linear-gradient(180deg, transparent 30%, var(--bg, #0c0813) 100%),
+    linear-gradient(105deg, rgba(89, 21, 206, 0.55) 0%, rgba(185, 51, 230, 0.35) 45%, rgba(255, 101, 155, 0.4) 100%);
+}
+
+.shell-header-glow--dark::after {
+  background-image: url("/static/profile/header-pattern-dark.svg");
+}
+
+.shell-header-glow--light {
+  background-color: var(--bg, #f5f5f5);
+}
+
+.shell-header-glow--light::before {
+  background-image:
+    linear-gradient(180deg, transparent 30%, var(--bg, #f5f5f5) 100%),
+    linear-gradient(180deg, #c8ddff 0%, #f5f5f5 86.67%);
+}
+
+.shell-header-glow--light::after {
+  background-image: url("/static/profile/header-pattern-light.svg");
+}
+
+/* 登录顶区：深色紫粉柔光 / 浅色青 mint 柔光（对照 Figma 登录页） */
+.shell-login-glow {
+  background-color: var(--bg, #0c0813);
+  background-image:
+    radial-gradient(120% 70% at 0% 0%, rgba(89, 21, 206, 0.4) 0%, transparent 55%),
+    radial-gradient(120% 70% at 100% 0%, rgba(255, 101, 155, 0.45) 0%, transparent 55%);
+  background-repeat: no-repeat;
+  background-size: 100% 55%, 100% 55%;
+  background-position: top left, top right;
+}
+
+.shell-login-glow.theme-light {
+  background-color: #f5f5f5;
+  background-image:
+    radial-gradient(120% 80% at 0% 0%, rgba(199, 255, 242, 0.95) 0%, transparent 58%),
+    radial-gradient(100% 70% at 100% 0%, rgba(200, 221, 255, 0.7) 0%, transparent 55%);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 聊天气泡 / 头像                                                             */
+/* -------------------------------------------------------------------------- */
+.chat-bubble-user {
+  background: var(--gradient-brand);
+  color: var(--fg-on-brand, #ffffff);
+  border-radius: 32rpx 8rpx 32rpx 32rpx;
+  padding: 32rpx;
+  width: 85%;
+  width: fit-content;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.chat-bubble-ai {
+  background: var(--bubble-ai-bg, #1c1c1e);
+  color: var(--fg, #{$fg});
+  border: none;
+  border-radius: 8rpx 32rpx 32rpx 32rpx;
+  padding: 32rpx;
+  width: 85%;
+  width: fit-content;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+.avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 50%;
+  background: var(--bg-input, #{$bg-input});
+}
+
+.avatar-sm {
+  width: 64rpx;
+  height: 64rpx;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Flex / 间距工具类                                                           */
+/* -------------------------------------------------------------------------- */
+.flex-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.flex-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.gap-sm {
+  gap: 16rpx;
+}
+
+.px-md {
+  padding-left: var(--page-gutter, 32rpx);
+  padding-right: var(--page-gutter, 32rpx);
+}
+
+.page-gutter-x {
+  padding-left: var(--page-gutter, 32rpx);
+  padding-right: var(--page-gutter, 32rpx);
+  box-sizing: border-box;
+}
+
+.text-title {
+  font-size: var(--fs-title, 40rpx);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--fg, #{$fg});
+}
+
+.text-body {
+  font-size: var(--fs-body, 28rpx);
+  color: var(--fg, #{$fg});
+}
+
+.text-caption {
+  font-size: var(--fs-caption, 24rpx);
+  color: var(--fg, #{$fg});
+  opacity: 0.4;
+}
+
+/* 社交互动：点赞/评论 — 对齐首页朋友圈 AppMomentCard */
+.social-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 48rpx;
+}
+
+.action-btn {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8rpx;
+  font-size: 26rpx;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.action-img {
+  display: block;
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+}
+
+/* 灰心/彩心叠放，避免安卓换 src 导致下一次点击落到旧热区 */
+.like-icon-wrap {
+  position: relative;
+  width: 40rpx;
+  height: 40rpx;
+  flex-shrink: 0;
+}
+
+.like-icon-wrap .action-img {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.like-icon-wrap .action-img.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.action-count {
+  font-size: 26rpx;
+  font-weight: 400;
+  line-height: 1.2;
+  color: var(--fg, #{$fg});
+  opacity: 0.6;
+}
+
+.py-sm {
+  padding-top: 16rpx;
+  padding-bottom: 16rpx;
+}
+
+.mt-md {
+  margin-top: 32rpx;
+}
+
+.w-full {
+  width: 100%;
+}
+
+.flex-1 {
+  flex: 1;
+  min-width: 0;
+}

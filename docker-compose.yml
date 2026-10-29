@@ -1,0 +1,88 @@
+# 开源部署：API + PostgreSQL + Redis（+ 可选 Nginx 挂 page 静态示例）
+# 把 .env.example 复制为 .env 后再启动。证书请自备，不要提交真实 .key/.pem。
+
+networks:
+  trand_net:
+
+services:
+  backend:
+    image: trandsai-base:v1
+    container_name: trandsai-backend
+    restart: unless-stopped
+    networks:
+      - trand_net
+    volumes:
+      - ./server:/app
+      - .:/project_root
+      - ./data:/app/data
+    working_dir: /app
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      TZ: UTC
+      DOTENV_PATH: /project_root/.env
+      LOG_LEVEL: INFO
+    depends_on:
+      - postgres
+      - redis
+
+  # 可选：本地用 Nginx 托管 page/ 静态站并反代 API
+  # 需要 HTTPS 时自行准备 page/cert/ 并改 nginx.conf.example
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: trandsai-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    networks:
+      - trand_net
+    volumes:
+      - ./nginx.conf.example:/etc/nginx/conf.d/default.conf:ro
+      - ./page/frontend:/usr/share/nginx/html/frontend:ro
+      - ./page/kaya:/usr/share/nginx/html/kaya:ro
+      - ./page/admin:/usr/share/nginx/html/admin:ro
+      - ./page/agreement:/usr/share/nginx/html/agreement:ro
+      - ./page/file:/usr/share/nginx/html/file:ro
+    depends_on:
+      - backend
+    profiles:
+      - with-nginx
+
+  postgres:
+    image: postgres:16
+    container_name: postgres_trandsai
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trandsai}
+      POSTGRES_USER: ${POSTGRES_USER:-trandsai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      PGDATA: /var/lib/postgresql/data
+      TZ: UTC
+      PGTZ: UTC
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_trandsai_data:/var/lib/postgresql/data
+    networks:
+      - trand_net
+
+  redis:
+    image: redis:7-alpine
+    container_name: trandsai-redis
+    restart: unless-stopped
+    networks:
+      - trand_net
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_trandsai_data:/data
+    command: redis-server --appendonly yes
+    environment:
+      TZ: UTC
+
+volumes:
+  postgres_trandsai_data:
+  redis_trandsai_data:

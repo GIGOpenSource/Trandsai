@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 343 177" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="privGrad" x1="28" y1="8" x2="320" y2="168" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#C9A07A"/>
+      <stop offset="0.42" stop-color="#8B5A3C"/>
+      <stop offset="1" stop-color="#3D2418"/>
+    </linearGradient>
+  </defs>
+  <!-- ó
+6¯:ãÙ»óYMÒ¦ 16 -->
+  <path
+    fill="url(#privGrad)"
+    d="M16 0h198c8.837 0 16 7.163 16 16v20c0 13.255 10.745 24 24 24h73c8.837 0 16 7.163 16 16v85c0 8.837-7.163 16-16 16H16c-8.837 0-16-7.163-16-16V16C0 7.163 7.163 0 16 0z"
+  />
+</svg>

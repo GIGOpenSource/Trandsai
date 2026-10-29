@@ -1,0 +1,1 @@
+function t(t){window.open(t,"_blank")}function e(){t("https://www.trandsai.com/agreement/Trands%20-%20Ai%20Privacy%20Policy.html")}function n(){t("https://www.trandsai.com/agreement/Trands%20-%20Ai%20User%20Agreement.html")}function a(){t("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")}export{n as a,a as b,e as o};

@@ -1,0 +1,6 @@
+<svg width="64" height="12" viewBox="0 0 64 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Left ornament: longer line + twin diamonds near text. Right side flips the image only. -->
+  <path d="M0 6H52" stroke="#A5797F" stroke-opacity="0.35" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M56.35 5.65L57.65 4.35C57.84 4.16 58.16 4.16 58.35 4.35L59.65 5.65C59.84 5.84 59.84 6.16 59.65 6.35L58.35 7.65C58.16 7.84 57.84 7.84 57.65 7.65L56.35 6.35C56.16 6.16 56.16 5.84 56.35 5.65Z" fill="#A5797F" fill-opacity="0.55"/>
+  <path d="M58.35 5.65L59.65 4.35C59.84 4.16 60.16 4.16 60.35 4.35L61.65 5.65C61.84 5.84 61.84 6.16 61.65 6.35L60.35 7.65C60.16 7.84 59.84 7.84 59.65 7.65L58.35 6.35C58.16 6.16 58.16 5.84 58.35 5.65Z" fill="#A5797F"/>
+</svg>

@@ -1,0 +1,1002 @@
+/**
+ * @file ui.scss
+ * @description 全局可复用 UI 件（表单 / 滚轮 / CTA / Composer 底栏 / 顶栏身份）。
+ * 由 App.vue 在 theme.scss 之后 @import；页面只保留布局特例。
+ * 深色标准见 docs/深色模式设计标准.md
+ */
+
+/* -------------------------------------------------------------------------- */
+/* 表单字段                                                                    */
+/* -------------------------------------------------------------------------- */
+.field {
+  padding: 24rpx var(--page-gutter, 32rpx); /* Figma py12 px16 */
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+.label,
+.field-label {
+  display: flex;
+  align-items: center;
+  font-size: var(--fs-body, 28rpx); /* 14 */
+  color: var(--fg, #fafafa);
+  margin-bottom: 20rpx; /* gap 10 */
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.required {
+  color: var(--brand-end, #B933E6);
+  margin-left: 4rpx;
+}
+
+.char-count {
+  font-size: 22rpx;
+  color: var(--fg-faint, rgba(255, 255, 255, 0.35));
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.char-count.over {
+  color: var(--destructive, #ef4444);
+}
+
+.input-error {
+  border-color: var(--destructive, #ef4444) !important;
+}
+
+.error-text {
+  display: block;
+  color: var(--destructive, #ef4444);
+  font-size: 22rpx;
+  margin-top: 8rpx;
+}
+
+.hint-text {
+  display: block;
+  font-size: 22rpx;
+  margin-top: 8rpx;
+  color: var(--fg-dim, rgba(255, 255, 255, 0.4));
+}
+
+.section-hint {
+  display: block;
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--fg, #fafafa);
+  margin-bottom: 8rpx;
+}
+
+.section-divider {
+  padding: 24rpx var(--page-gutter, 32rpx);
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
+.section-divider > .field {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.mutex-hint {
+  color: #fda4af;
+  margin-top: 12rpx;
+}
+
+.picker-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 96rpx;
+  line-height: 1.4;
+  box-sizing: border-box;
+  color: var(--fg, #fafafa);
+}
+
+.picker-placeholder {
+  color: var(--fg-placeholder, rgba(255, 255, 255, 0.3));
+}
+
+.picker-arrow {
+  display: none;
+}
+
+.axes-picker-field {
+  min-height: 96rpx;
+  align-items: flex-start;
+}
+
+.axes-picker-field text {
+  white-space: normal;
+  line-height: 1.4;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 底部滚轮弹窗（遗留类名；新建优先用 components/AppWheelPickerPopup.vue）      */
+/* -------------------------------------------------------------------------- */
+.wheel-picker-popup {
+  background: var(--surface-sheet, var(--modal-bg, #0a0a0a));
+  border-radius: 32rpx 32rpx 0 0;
+  border-top: 1rpx solid var(--border-soft, rgba(255, 255, 255, 0.06));
+  overflow: hidden;
+}
+
+.wheel-picker-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16rpx;
+  padding: 28rpx 32rpx;
+  border-bottom: 1rpx solid var(--border-soft, rgba(255, 255, 255, 0.06));
+  background: var(--surface-sheet, var(--modal-bg, #0a0a0a));
+}
+
+.wheel-picker-btn {
+  min-width: 104rpx;
+  font-size: 28rpx;
+  line-height: 1.2;
+}
+
+.wheel-picker-btn.cancel {
+  color: var(--fg-dim, rgba(255, 255, 255, 0.4));
+}
+
+.wheel-picker-btn.confirm {
+  color: var(--brand-text, var(--brand, #FF659B));
+  font-weight: 600;
+  text-align: right;
+}
+
+.wheel-picker-title {
+  flex: 1;
+  color: var(--fg, rgba(255, 255, 255, 0.92));
+  font-size: 30rpx;
+  font-weight: 600;
+  text-align: center;
+}
+
+.wheel-picker-view {
+  width: 100%;
+  height: 440rpx;
+  background: var(--surface-sheet, var(--modal-bg, #0a0a0a));
+}
+
+.wheel-picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 88rpx;
+  color: var(--fg-dim, rgba(255, 255, 255, 0.4));
+  font-size: 30rpx;
+}
+
+.axes-col-titles {
+  display: flex;
+  flex-direction: row;
+  padding: 0 12rpx 8rpx;
+  gap: 4rpx;
+}
+
+.axes-col-title {
+  flex: 1;
+  text-align: center;
+  font-size: 20rpx;
+  color: var(--fg-faint, rgba(255, 255, 255, 0.45));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.axes-picker-view {
+  height: 480rpx;
+}
+
+.axes-wheel-item {
+  font-size: 22rpx;
+  padding: 0 4rpx;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 分段选项 / 标签                                                             */
+/* -------------------------------------------------------------------------- */
+.choice-row,
+.gender-row {
+  display: flex;
+  flex-direction: row;
+  gap: 14rpx;
+  width: 100%;
+}
+
+.choice-btn,
+.gender-btn {
+  flex: 1;
+  margin: 0;
+  height: 88rpx; /* Figma 44 */
+  padding: 0 16rpx;
+  border-radius: 32rpx; /* 16 */
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 88rpx;
+  background: var(--surface-inset, rgba(255, 255, 255, 0.05));
+  color: var(--fg, #fafafa);
+  border: 1rpx solid var(--border-soft, rgba(255, 255, 255, 0.05));
+  box-sizing: border-box;
+}
+
+.choice-btn::after,
+.gender-btn::after {
+  border: none;
+}
+
+.choice-btn.active,
+.gender-btn.active {
+  background: var(--brand, #FF659B);
+  color: var(--fg-on-brand, #0a0a0a);
+  border-color: transparent;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24rpx;
+}
+
+.tag-btn {
+  margin: 0;
+  padding: 16rpx 24rpx; /* Figma py8 px12 */
+  border-radius: 9999px;
+  font-size: 28rpx;
+  font-weight: 400;
+  line-height: 1.2;
+  background: var(--surface-faint, rgba(255, 255, 255, 0.03));
+  color: var(--fg-muted, rgba(255, 255, 255, 0.6));
+  border: 1rpx solid var(--border-soft, rgba(255, 255, 255, 0.05));
+}
+
+.tag-btn::after {
+  border: none;
+}
+
+.tag-btn.active {
+  background: var(--gradient-brand);
+  color: var(--fg-on-brand, #ffffff);
+  border-color: transparent;
+}
+
+.tag-group,
+.personality-group {
+  margin-top: 16rpx;
+}
+
+.tag-group-title,
+.personality-group-title {
+  display: block;
+  font-size: 22rpx;
+  color: var(--fg-faint, rgba(255, 255, 255, 0.45));
+  margin-bottom: 16rpx;
+}
+
+.expand-chip,
+.personality-expand {
+  margin-top: 24rpx;
+  padding: 20rpx 24rpx;
+  min-height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 32rpx;
+  background: var(--surface-faint, rgba(255, 255, 255, 0.03));
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.05));
+  box-sizing: border-box;
+}
+
+.expand-chip-text,
+.personality-expand-text {
+  font-size: 28rpx;
+  line-height: 1.3;
+  color: var(--fg-muted, rgba(255, 255, 255, 0.6));
+  text-align: center;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 年龄滑条 + 气泡                                                             */
+/* -------------------------------------------------------------------------- */
+.age-slider {
+  position: relative;
+  padding-top: 4rpx;
+  padding-bottom: 8rpx;
+}
+
+.age-slider-ctrl {
+  margin: 0;
+  width: 100%;
+}
+
+.age-bubble-wrap {
+  position: relative;
+  height: 40rpx;
+  margin-top: -4rpx;
+}
+
+.age-bubble {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  min-width: 48rpx;
+  height: 38rpx;
+  padding: 0 10rpx;
+  border-radius: 8rpx;
+  background: var(--brand-end, #B933E6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.age-bubble-text {
+  font-size: 22rpx;
+  font-weight: 600;
+  color: var(--fg-on-brand, #0a0a0a);
+  line-height: 1;
+}
+
+.range-hints {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4rpx;
+}
+
+.range-hint {
+  font-size: 22rpx;
+  font-weight: 500;
+  color: var(--fg-dim, rgba(255, 255, 255, 0.4));
+}
+
+.age-slider .uni-slider-handle,
+.age-slider .wx-slider-handle {
+  background: transparent !important;
+}
+
+.age-slider .uni-slider-thumb,
+.age-slider .wx-slider-thumb {
+  background: var(--brand-end, #B933E6) !important;
+}
+
+.age-slider .uni-slider-track,
+.age-slider .wx-slider-track {
+  background: var(--brand-end, #B933E6) !important;
+}
+
+.age-slider .uni-slider-inner,
+.age-slider .wx-slider-inner {
+  background: var(--border, #444444) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* CTA：底栏主按钮 / 顶栏品牌胶囊 / 加载遮罩                                   */
+/* -------------------------------------------------------------------------- */
+.sticky-footer,
+.create-footer {
+  flex-shrink: 0;
+  padding: 24rpx var(--page-gutter, 32rpx) calc(24rpx + env(safe-area-inset-bottom));
+  background: var(--bg, #0a0a0a);
+  box-sizing: border-box;
+}
+
+.btn-cta,
+.submit-btn {
+  width: 100%;
+  height: auto;
+  min-height: 92rpx; /* ~ py14 + 18 line */
+  border-radius: 9999px !important;
+  margin: 0;
+  padding: 28rpx 32rpx;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32rpx; /* 16 */
+  font-weight: 500;
+  line-height: 36rpx;
+  color: var(--fg-disabled, rgba(255, 255, 255, 0.4)) !important;
+  background: var(--surface-disabled, rgba(255, 255, 255, 0.2)) !important;
+  border: none !important;
+}
+
+.btn-cta::after,
+.submit-btn::after {
+  border: none;
+}
+
+.btn-cta.ready,
+.btn-cta.is-ready,
+.submit-btn.ready {
+  color: var(--fg-on-brand, #ffffff) !important;
+  background: var(--gradient-brand) !important;
+  opacity: 1 !important;
+}
+
+.btn-cta[disabled]:not(.ready):not(.is-ready),
+.submit-btn[disabled]:not(.ready) {
+  color: var(--fg-disabled, rgba(255, 255, 255, 0.4)) !important;
+  background: var(--surface-disabled, rgba(255, 255, 255, 0.2)) !important;
+  opacity: 1 !important;
+}
+
+.chip-brand,
+.autofill-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 156rpx; /* Figma 78 */
+  padding: 22rpx 24rpx; /* ~11 / 12 */
+  border-radius: 32rpx;
+  background: var(--gradient-brand);
+  box-sizing: border-box;
+}
+
+.chip-brand-text,
+.autofill-btn-text {
+  font-size: 28rpx;
+  font-weight: 500;
+  line-height: 32rpx; /* 16 */
+  color: var(--fg-on-brand, #0a0a0a);
+  white-space: nowrap;
+}
+
+.chip-brand.disabled,
+.autofill-btn.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.loading-mask,
+.autofill-mask {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-panel,
+.autofill-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--modal-bg, #1a1a1a);
+  border-radius: 32rpx;
+  padding: 48rpx 72rpx;
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.25);
+}
+
+.loader-spinner {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  background: var(--gradient-brand);
+  position: relative;
+  animation: ui-spin 0.8s linear infinite;
+  margin-bottom: 24rpx;
+}
+
+.loader-spinner::after {
+  content: "";
+  position: absolute;
+  top: 6rpx;
+  left: 6rpx;
+  right: 6rpx;
+  bottom: 6rpx;
+  border-radius: 50%;
+  background: var(--modal-bg, #1a1a1a);
+}
+
+.loader-text {
+  color: var(--fg, #fafafa);
+  font-size: 28rpx;
+  font-weight: 500;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* 预览卡（创建伴侣等同款）                                                     */
+/* -------------------------------------------------------------------------- */
+.preview-field {
+  padding-bottom: 32rpx;
+}
+
+.preview-title {
+  margin-bottom: 16rpx;
+}
+
+.preview-card-wrapper {
+  width: 100%;
+  border-radius: 32rpx;
+  border: 2rpx solid var(--brand-end, #B933E6);
+  background: linear-gradient(
+    90deg,
+    rgba(231, 71, 164, 0.3) 0%,
+    rgba(255, 249, 70, 0.15) 100%
+  );
+  box-sizing: border-box;
+}
+
+.preview-card-inner {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20rpx;
+  padding: 32rpx;
+  box-sizing: border-box;
+}
+
+.preview-avatar {
+  width: 104rpx; /* Figma 52 */
+  height: 104rpx;
+  display: flex;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  margin-right: 0;
+}
+
+.preview-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  gap: 4rpx;
+}
+
+.preview-name {
+  display: block;
+  font-size: 28rpx;
+  color: var(--fg, #fafafa);
+  font-weight: 500;
+  margin-bottom: 0;
+}
+
+.preview-meta {
+  display: block;
+  font-size: 24rpx;
+  color: var(--fg-muted, rgba(255, 255, 255, 0.7));
+  font-weight: 400;
+}
+
+.preview-appearance {
+  font-size: 22rpx;
+  color: var(--fg-faint, rgba(255, 255, 255, 0.55));
+  margin-top: 6rpx;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.import-btn {
+  margin: 16rpx 0 0;
+  padding: 20rpx 24rpx;
+  border-radius: 32rpx;
+  font-size: 28rpx;
+  color: var(--fg, #fafafa);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  line-height: 32rpx;
+}
+
+.import-btn::after {
+  border: none;
+}
+
+/* textarea 尺寸变体（配合 .input-field） */
+.input-field.textarea {
+  width: 100%;
+  min-height: 200rpx;
+  height: 200rpx !important;
+  box-sizing: border-box;
+}
+
+.input-field.textarea.short {
+  min-height: 200rpx;
+  height: 200rpx !important;
+}
+
+.input-field.textarea.tall {
+  min-height: 240rpx;
+  height: 240rpx !important;
+}
+
+.input-field.textarea.chat-history {
+  min-height: 280rpx;
+  height: 280rpx !important;
+  font-size: 28rpx;
+}
+
+/* App 端：外壳负责视觉，原生 textarea 透明 + 固定高，避免 input-field 的 auto 压扁内层 */
+.textarea-shell {
+  width: 100%;
+  padding: 32rpx;
+  box-sizing: border-box;
+  background: var(--surface-inset, var(--bg-input));
+  border: 1rpx solid var(--border-soft, var(--border));
+  border-radius: 32rpx;
+  min-height: 200rpx;
+}
+
+.textarea-shell--short {
+  min-height: 200rpx;
+}
+
+.textarea-shell--tall {
+  min-height: 240rpx;
+}
+
+.textarea-shell--chat {
+  min-height: 280rpx;
+}
+
+.textarea-shell--error {
+  border-color: var(--destructive, #ef4444);
+}
+
+.textarea-native {
+  display: block;
+  width: 100%;
+  height: 136rpx;
+  min-height: 136rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  font-size: var(--fs-body, 28rpx);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--fg, #fafafa);
+  box-sizing: border-box;
+}
+
+.textarea-shell--tall .textarea-native {
+  height: 176rpx;
+  min-height: 176rpx;
+}
+
+.textarea-shell--chat .textarea-native {
+  height: 216rpx;
+  min-height: 216rpx;
+  font-size: 28rpx;
+}
+
+.textarea-native .uni-textarea-placeholder,
+.textarea-native .input-placeholder {
+  color: var(--fg-muted, rgba(255, 255, 255, 0.55)) !important;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 下拉刷新（品牌双色环，首页 / 发现页共用）                                      */
+/* -------------------------------------------------------------------------- */
+.custom-refresh {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 20rpx;
+}
+
+.custom-refresh-spinner {
+  width: 64rpx;
+  height: 64rpx;
+  border-radius: 50%;
+  border: 8rpx solid var(--brand-end, #B933E6);
+  border-top-color: var(--brand, #FF659B);
+  box-sizing: border-box;
+  animation: custom-refresh-spin 0.8s linear infinite;
+}
+
+.custom-refresh-spinner--idle {
+  animation: none;
+}
+
+.custom-refresh-text {
+  font-size: var(--fs-caption, 24rpx);
+  color: var(--fg-muted);
+  margin-top: 12rpx;
+}
+
+@keyframes custom-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Composer 底栏（聊天 / 评论）— 今日深色对齐稿面                                */
+/* -------------------------------------------------------------------------- */
+/*
+ * 结构：
+ *   .composer-bar > .composer-field-wrap > .composer-textarea
+ *                 > .composer-action(.active)
+ * 或单行：.composer-bar > .composer-row > .composer-field + .composer-action
+ *
+ * 规则：背景/圆角/内边距在 wrap；textarea 只排文字（避免 auto-height 光标错位）。
+ * 左侧勿再塞空占位节点（会叠 gap 造成左边距夸张）。
+ */
+.composer-bar {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: var(--composer-gap, 24rpx);
+  padding: var(--composer-bar-pad-y, 24rpx) var(--page-gutter, 32rpx);
+  background: var(--bg, #0a0a0a);
+  box-sizing: border-box;
+  width: 100%;
+  position: relative;
+}
+
+.composer-bar--disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.composer-bar--disabled .composer-field-wrap {
+  background: var(--surface-inset, rgba(255, 255, 255, 0.03));
+}
+
+.composer-action.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.composer-bar--safe {
+  flex-direction: column;
+  align-items: stretch;
+  padding-bottom: calc(var(--composer-bar-pad-y, 24rpx) + env(safe-area-inset-bottom, 0px));
+}
+
+/* 聊天等横向 Composer：只补安全区，不改成纵向 */
+.composer-bar--inset-bottom {
+  padding-bottom: calc(var(--composer-bar-pad-y, 24rpx) + env(safe-area-inset-bottom, 0px));
+}
+
+.composer-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--composer-gap, 24rpx);
+  width: 100%;
+}
+
+.composer-field-wrap {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  min-height: var(--composer-h, 82rpx);
+  padding: var(--composer-pad-y, 20rpx) var(--composer-pad-x, 24rpx);
+  box-sizing: border-box;
+  border-radius: var(--radius-control, 32rpx);
+  background: var(--surface-inset, rgba(255, 255, 255, 0.05));
+  border: 1rpx solid var(--border-soft, rgba(255, 255, 255, 0.05));
+}
+
+/* 单行 input（评论栏） */
+.composer-field {
+  flex: 1;
+  min-width: 0;
+  height: var(--composer-h, 82rpx);
+  min-height: var(--composer-h, 82rpx);
+  padding: 0 var(--composer-pad-x, 24rpx);
+  border-radius: var(--radius-control, 32rpx);
+  background: var(--surface-inset, var(--bg-input));
+  border: 1rpx solid var(--border-soft, var(--border));
+  color: var(--fg);
+  font-size: var(--fs-body, 28rpx);
+  line-height: var(--composer-h, 82rpx);
+  box-sizing: border-box;
+}
+
+.composer-textarea {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  min-height: var(--composer-line-h, 42rpx);
+  max-height: 320rpx;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--fg);
+  font-size: var(--fs-body, 28rpx);
+  line-height: var(--composer-line-h, 42rpx);
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: normal;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.composer-textarea .uni-textarea-wrapper,
+.composer-textarea :deep(.uni-textarea-wrapper) {
+  width: 100% !important;
+  min-height: var(--composer-line-h, 42rpx);
+  padding: 0;
+  margin: 0;
+}
+
+.composer-textarea .uni-textarea-textarea,
+.composer-textarea :deep(.uni-textarea-textarea) {
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  line-height: var(--composer-line-h, 42rpx);
+  font-size: var(--fs-body, 28rpx);
+  white-space: pre-wrap;
+  word-break: normal !important;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+.composer-textarea .uni-textarea-placeholder,
+.composer-textarea .input-placeholder,
+.composer-textarea :deep(.uni-textarea-placeholder),
+.composer-textarea :deep(.input-placeholder) {
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: auto !important;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  line-height: var(--composer-line-h, 42rpx);
+  font-size: var(--fs-body, 28rpx);
+}
+
+.composer-action {
+  width: var(--composer-btn-w, 104rpx);
+  height: var(--composer-h, 82rpx);
+  min-width: var(--composer-btn-w, 104rpx);
+  min-height: var(--composer-h, 82rpx);
+  border-radius: var(--radius-control, 32rpx);
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  padding: 0 !important;
+  margin: 0;
+  /* 用 inset shadow 代替 border，避免 box-sizing 把内容区吃掉 2rpx */
+  border: none;
+  box-shadow: inset 0 0 0 1rpx var(--border-soft, rgba(255, 255, 255, 0.05));
+  background: var(--surface-inset, rgba(255, 255, 255, 0.05)) !important;
+  box-sizing: border-box;
+  line-height: 1;
+  position: relative;
+  overflow: visible;
+}
+
+.composer-action::after {
+  border: none;
+}
+
+.composer-action image,
+.composer-action .composer-action-ico {
+  width: var(--composer-icon, 56rpx) !important;
+  height: var(--composer-icon, 56rpx) !important;
+  display: block;
+  flex-shrink: 0;
+  position: static;
+  margin: 0;
+  padding: 0;
+}
+
+.composer-action--ghost {
+  background: transparent !important;
+  box-shadow: none;
+}
+
+.composer-action--send.active,
+.composer-action.active {
+  background: var(--gradient-brand-btn) !important;
+  box-shadow: none;
+  color: var(--fg-on-brand, #0a0a0a);
+}
+
+/* 品牌渐变底上的线稿图标 → 黑色 */
+.composer-action--send.active image,
+.composer-action.active image,
+.icon-on-brand {
+  filter: brightness(0);
+}
+
+.composer-action[disabled],
+.composer-action.is-idle {
+  opacity: 0.7;
+}
+
+.composer-action.busy,
+.composer-action.dimmed {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.composer-action[disabled].active:not(.dimmed):not(.busy) {
+  opacity: 1;
+}
+
+.composer-panel {
+  position: absolute;
+  bottom: calc(100% + 8rpx);
+  right: var(--page-gutter, 32rpx);
+  left: auto;
+  background: var(--modal-bg, #0a0a0a);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel, 24rpx);
+  box-shadow: 0 8rpx 32rpx rgba(0, 0, 0, 0.18);
+  z-index: 50;
+  padding: 16rpx;
+  /* 保证溢出区域也能点到（勿挂在小按钮内部） */
+  pointer-events: auto;
+}
+
+/* -------------------------------------------------------------------------- */
+/* 顶栏身份（返回旁头像 + 名）— titleAlign=start                                */
+/* -------------------------------------------------------------------------- */
+.header-identity {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16rpx;
+  min-width: 0;
+  flex: 1;
+}
+
+.header-identity-avatar {
+  width: 56rpx;
+  height: 56rpx;
+  flex-shrink: 0;
+}
+
+.header-identity-avatar .avatar-root,
+.header-identity-avatar :deep(.avatar-root) {
+  width: 100%;
+  height: 100%;
+}
+
+.header-identity-name {
+  font-size: var(--fs-body, 28rpx);
+  font-weight: 500;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.header-identity-meta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+}
+
+.header-identity-status {
+  font-size: var(--fs-meta, 22rpx);
+  color: var(--fg-muted);
+  display: block;
+}

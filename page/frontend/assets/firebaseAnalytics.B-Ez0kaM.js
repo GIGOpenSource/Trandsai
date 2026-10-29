@@ -1,0 +1,1 @@
+import{ab as e,ac as u}from"./index-BMRz8op6.js";function n(e=null){return u(e)}function r(u={}){n(u.user||null),e({method:u.method,user:u.user})}function s(u={}){n(u.user||null),e({method:u.method||"email",user:u.user})}export{s as a,r as t};

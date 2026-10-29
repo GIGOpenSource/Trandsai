@@ -1,0 +1,1 @@
+var e=(void 0)?.replace(/\/$/,``)??``;function t(t){if(t==null)return``;let n=String(t).trim();return n?n.startsWith(`http://`)||n.startsWith(`https://`)||n.startsWith(`data:`)||n.startsWith(`blob:`)?n:n.startsWith(`/`)?e?`${e}${n}`:n:e?`${e}/${n}`:`/${n}`:``}export{t};
