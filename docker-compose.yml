@@ -29,17 +29,19 @@ services:
       - postgres
       - redis
 
-  # Nginx 托管 page/ 静态站并反代 API（默认随 up 一起启动）
+  # Nginx 托管 page/ 静态站并反代 API（80 + 443）
   nginx:
     image: nginx:1.27-alpine
     container_name: trandsai-nginx
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     networks:
       - trand_net
     volumes:
       - ./nginx.conf.example:/etc/nginx/conf.d/default.conf:ro
+      - ./page/cert:/etc/nginx/certs:ro
       - ./page/frontend:/usr/share/nginx/html/frontend:ro
       - ./page/kaya:/usr/share/nginx/html/kaya:ro
       - ./page/admin:/usr/share/nginx/html/admin:ro

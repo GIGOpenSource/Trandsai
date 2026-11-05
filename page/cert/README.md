@@ -2,12 +2,13 @@
 
 Put your own cert files here. **Do not commit** real `.key` / `.pem` / `.crt`.
 
-Example names (match your Nginx config):
+Nginx 期望文件名（已挂载到容器 `/etc/nginx/certs/`）：
 
 ```
 page/cert/
-  your.example.com_bundle.crt
-  your.example.com.key
+  fullchain.pem   # 证书链（含域名 SAN：liaosao.xyz / .live / .life 及 www）
+  privkey.pem     # 私钥
 ```
 
-Compose / Nginx examples in this repo do **not** mount production domains.
+可用 Let's Encrypt（certbot）一次签多域名，再拷贝到上述路径。  
+没有这两个文件时，带 443 的 Nginx **无法启动**。
