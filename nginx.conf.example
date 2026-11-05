@@ -1,5 +1,5 @@
-# 示例：HTTP 托管 page/ 静态资源，并把 /api /ws 反代到 backend。
-# 把 your.example.com 换成自己的域名；HTTPS/证书自行扩展。
+# liaosao.xyz / liaosao.live：HTTP 托管 page/ 静态资源，并把 /api /ws 反代到 backend。
+# HTTPS/证书自行扩展（证书可放 page/cert/）。
 
 upstream backend_pool {
     ip_hash;
@@ -8,7 +8,7 @@ upstream backend_pool {
 
 server {
     listen 80;
-    server_name localhost your.example.com;
+    server_name liaosao.xyz www.liaosao.xyz liaosao.live www.liaosao.live 139.162.72.71 localhost;
 
     client_max_body_size 40m;
 
