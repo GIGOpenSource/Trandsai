@@ -1,1 +1,0 @@
-import{a2 as e,a3 as u}from"./index-CPwMBbjS.js";function n(e=null){return u(e)}function r(u={}){n(u.user||null),e({method:u.method,user:u.user})}function s(u={}){n(u.user||null),e({method:u.method||"email",user:u.user})}export{s as a,r as t};
