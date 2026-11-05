@@ -1,14 +1,17 @@
 # TLS certificates (local only)
 
-Put your own cert files here. **Do not commit** real `.key` / `.pem` / `.crt`.
+**Do not commit** real `.key` / `.crt` / `.pem`.
 
-Nginx 期望文件名（已挂载到容器 `/etc/nginx/certs/`）：
+当前 Nginx 使用的文件名：
 
 ```
 page/cert/
-  fullchain.pem   # 证书链（含域名 SAN：liaosao.xyz / .live / .life 及 www）
-  privkey.pem     # 私钥
+  jnaliaosao_xyz.crt
+  jnaliaosao_xyz.key
+  jnaliaosao_live.crt
+  jnaliaosao_live.key
+  jnaliaosao_life.crt
+  jnaliaosao_life.key
 ```
 
-可用 Let's Encrypt（certbot）一次签多域名，再拷贝到上述路径。  
-没有这两个文件时，带 443 的 Nginx **无法启动**。
+挂载到容器：`/etc/nginx/certs/`。

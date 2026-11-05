@@ -1,12 +1,14 @@
-# liaosao.xyz / .live / .life：HTTP→HTTPS，静态站 + /api /ws 反代。
-# 证书放到 page/cert/：fullchain.pem + privkey.pem（勿提交仓库）。
+# liaosao.xyz / .live / .life：HTTP→HTTPS，各域名独立证书。
+# 证书目录 page/cert/（已挂载为 /etc/nginx/certs/）
 
 upstream backend_pool {
     ip_hash;
     server trandsai-backend:8000;
 }
 
-# HTTP：跳转 HTTPS（本机 IP / localhost 仍可直接用 80 调试）
+# ---------- 公共 location 片段靠 include 不便，三处 HTTPS 保持一致 ----------
+
+# HTTP：域名跳转 HTTPS；保留 ACME 校验路径
 server {
     listen 80;
     server_name liaosao.xyz www.liaosao.xyz liaosao.live www.liaosao.live liaosao.life www.liaosao.life;
@@ -21,6 +23,7 @@ server {
     }
 }
 
+# HTTP：IP / localhost 调试（无证书）
 server {
     listen 80;
     server_name 139.162.72.71 localhost;
@@ -69,13 +72,128 @@ server {
     }
 }
 
+# ---------- HTTPS: liaosao.xyz ----------
 server {
     listen 443 ssl;
     http2 on;
-    server_name liaosao.xyz www.liaosao.xyz liaosao.live www.liaosao.live liaosao.life www.liaosao.life;
+    server_name liaosao.xyz www.liaosao.xyz;
 
-    ssl_certificate     /etc/nginx/certs/fullchain.pem;
-    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_certificate     /etc/nginx/certs/jnaliaosao_xyz.crt;
+    ssl_certificate_key /etc/nginx/certs/jnaliaosao_xyz.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 40m;
+
+    location /api/ {
+        proxy_pass http://backend_pool/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
+    }
+
+    location /ws/ {
+        proxy_pass http://backend_pool/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
+    }
+
+    location /admin/ {
+        alias /usr/share/nginx/html/admin/;
+        try_files $uri $uri/ /admin/index.html;
+        index index.html;
+    }
+
+    location /agreement/ {
+        alias /usr/share/nginx/html/agreement/;
+        try_files $uri $uri/ =404;
+    }
+
+    location / {
+        root /usr/share/nginx/html/frontend;
+        try_files $uri $uri/ /index.html;
+        index index.html;
+    }
+}
+
+# ---------- HTTPS: liaosao.live ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name liaosao.live www.liaosao.live;
+
+    ssl_certificate     /etc/nginx/certs/jnaliaosao_live.crt;
+    ssl_certificate_key /etc/nginx/certs/jnaliaosao_live.key;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:SSL:10m;
+    ssl_protocols TLSv1.2 TLSv1.3;
+
+    client_max_body_size 40m;
+
+    location /api/ {
+        proxy_pass http://backend_pool/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
+    }
+
+    location /ws/ {
+        proxy_pass http://backend_pool/ws/;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_read_timeout 180s;
+    }
+
+    location /admin/ {
+        alias /usr/share/nginx/html/admin/;
+        try_files $uri $uri/ /admin/index.html;
+        index index.html;
+    }
+
+    location /agreement/ {
+        alias /usr/share/nginx/html/agreement/;
+        try_files $uri $uri/ =404;
+    }
+
+    location / {
+        root /usr/share/nginx/html/frontend;
+        try_files $uri $uri/ /index.html;
+        index index.html;
+    }
+}
+
+# ---------- HTTPS: liaosao.life ----------
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name liaosao.life www.liaosao.life;
+
+    ssl_certificate     /etc/nginx/certs/jnaliaosao_life.crt;
+    ssl_certificate_key /etc/nginx/certs/jnaliaosao_life.key;
     ssl_session_timeout 1d;
     ssl_session_cache shared:SSL:10m;
     ssl_protocols TLSv1.2 TLSv1.3;
