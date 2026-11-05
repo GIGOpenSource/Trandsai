@@ -29,7 +29,7 @@ services:
       - postgres
       - redis
 
-  # 可选：本地用 Nginx 托管 page/ 静态站并反代 API
+  # Nginx 托管 page/ 静态站并反代 API（默认随 up 一起启动）
   nginx:
     image: nginx:1.27-alpine
     container_name: trandsai-nginx
@@ -47,8 +47,6 @@ services:
       - ./page/file:/usr/share/nginx/html/file:ro
     depends_on:
       - backend
-    profiles:
-      - with-nginx
 
   postgres:
     image: postgres:16
