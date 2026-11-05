@@ -41,6 +41,7 @@ services:
       - trand_net
     volumes:
       - ./nginx.conf.example:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx-app-locations.inc:/etc/nginx/conf.d/app_locations.inc:ro
       - ./page/cert:/etc/nginx/certs:ro
       - ./page/frontend:/usr/share/nginx/html/frontend:ro
       - ./page/kaya:/usr/share/nginx/html/kaya:ro
