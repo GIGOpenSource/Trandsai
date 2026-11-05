@@ -1,4 +1,4 @@
-# 开源部署：API + PostgreSQL + Redis（+ 可选 Nginx 挂 page 静态示例）
+# 开源部署：API（PostgreSQL / Redis 用宿主机本机服务）
 # 把 .env.example 复制为 .env 后再启动。证书请自备，不要提交真实 .key/.pem。
 
 networks:
@@ -11,6 +11,9 @@ services:
     restart: unless-stopped
     networks:
       - trand_net
+    # 让容器通过 host.docker.internal 访问宿主机上的 PG / Redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./server:/app
       - .:/project_root
@@ -25,9 +28,6 @@ services:
       TZ: UTC
       DOTENV_PATH: /project_root/.env
       LOG_LEVEL: INFO
-    depends_on:
-      - postgres
-      - redis
 
   # 可选：本地用 Nginx 托管 page/ 静态站并反代 API
   # 需要 HTTPS 时自行准备 page/cert/ 并改 nginx.conf.example
@@ -50,39 +50,3 @@ services:
       - backend
     profiles:
       - with-nginx
-
-  postgres:
-    image: postgres:16
-    container_name: postgres_trandsai
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-trandsai}
-      POSTGRES_USER: ${POSTGRES_USER:-trandsai}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
-      PGDATA: /var/lib/postgresql/data
-      TZ: UTC
-      PGTZ: UTC
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_trandsai_data:/var/lib/postgresql/data
-    networks:
-      - trand_net
-
-  redis:
-    image: redis:7-alpine
-    container_name: trandsai-redis
-    restart: unless-stopped
-    networks:
-      - trand_net
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_trandsai_data:/data
-    command: redis-server --appendonly yes
-    environment:
-      TZ: UTC
-
-volumes:
-  postgres_trandsai_data:
-  redis_trandsai_data:
